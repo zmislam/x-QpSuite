@@ -1,0 +1,266 @@
+class DashboardKpi {
+  final num value;
+  final num change;
+  final double changePct;
+
+  const DashboardKpi({
+    required this.value,
+    required this.change,
+    required this.changePct,
+  });
+
+  factory DashboardKpi.fromJson(Map<String, dynamic> json) {
+    return DashboardKpi(
+      value: json['value'] ?? 0,
+      change: json['change'] ?? 0,
+      changePct: (json['change_pct'] ?? 0).toDouble(),
+    );
+  }
+
+  static DashboardKpi zero() => const DashboardKpi(value: 0, change: 0, changePct: 0);
+}
+
+class DashboardKpis {
+  final DashboardKpi followers;
+  final DashboardKpi reach;
+  final DashboardKpi engagement;
+  final DashboardKpi impressions;
+  final DashboardKpi clicks;
+  final DashboardKpi pageViews;
+  final DashboardKpi messages;
+  final DashboardKpi postsPublished;
+
+  const DashboardKpis({
+    required this.followers,
+    required this.reach,
+    required this.engagement,
+    required this.impressions,
+    required this.clicks,
+    required this.pageViews,
+    required this.messages,
+    required this.postsPublished,
+  });
+
+  factory DashboardKpis.fromJson(Map<String, dynamic> json) {
+    return DashboardKpis(
+      followers: _kpi(json, 'followers'),
+      reach: _kpi(json, 'reach'),
+      engagement: _kpi(json, 'engagement'),
+      impressions: _kpi(json, 'impressions'),
+      clicks: _kpi(json, 'clicks'),
+      pageViews: _kpi(json, 'page_views'),
+      messages: _kpi(json, 'messages'),
+      postsPublished: _kpi(json, 'posts_published'),
+    );
+  }
+
+  static DashboardKpi _kpi(Map<String, dynamic> json, String key) {
+    if (json[key] is Map<String, dynamic>) {
+      return DashboardKpi.fromJson(json[key]);
+    }
+    return DashboardKpi.zero();
+  }
+
+  List<(String, DashboardKpi)> toList() => [
+        ('Followers', followers),
+        ('Reach', reach),
+        ('Engagement', engagement),
+        ('Impressions', impressions),
+        ('Clicks', clicks),
+        ('Page Views', pageViews),
+        ('Messages', messages),
+        ('Posts', postsPublished),
+      ];
+}
+
+class TrendPoint {
+  final DateTime date;
+  final num totalReach;
+  final num totalEngagement;
+  final num totalImpressions;
+  final num totalClicks;
+  final num pageViews;
+  final num followersGained;
+  final num followersTotal;
+  final num postsPublished;
+  final num messagesReceived;
+
+  TrendPoint({
+    required this.date,
+    required this.totalReach,
+    required this.totalEngagement,
+    required this.totalImpressions,
+    required this.totalClicks,
+    required this.pageViews,
+    required this.followersGained,
+    required this.followersTotal,
+    required this.postsPublished,
+    required this.messagesReceived,
+  });
+
+  factory TrendPoint.fromJson(Map<String, dynamic> json) {
+    return TrendPoint(
+      date: DateTime.parse(json['date']),
+      totalReach: json['total_reach'] ?? 0,
+      totalEngagement: json['total_engagement'] ?? 0,
+      totalImpressions: json['total_impressions'] ?? 0,
+      totalClicks: json['total_clicks'] ?? 0,
+      pageViews: json['page_views'] ?? 0,
+      followersGained: json['followers_gained'] ?? 0,
+      followersTotal: json['followers_total'] ?? 0,
+      postsPublished: json['posts_published'] ?? 0,
+      messagesReceived: json['messages_received'] ?? 0,
+    );
+  }
+
+  num valueFor(TrendMetric metric) => switch (metric) {
+        TrendMetric.reach => totalReach,
+        TrendMetric.engagement => totalEngagement,
+        TrendMetric.impressions => totalImpressions,
+        TrendMetric.followers => followersTotal,
+      };
+}
+
+enum TrendMetric { reach, engagement, impressions, followers }
+
+class TopPost {
+  final String id;
+  final String description;
+  final String? image;
+  final List<String> media;
+  final int likes;
+  final int comments;
+  final int shares;
+  final int engagement;
+  final int views;
+  final String type;
+  final DateTime date;
+
+  TopPost({
+    required this.id,
+    required this.description,
+    this.image,
+    this.media = const [],
+    this.likes = 0,
+    this.comments = 0,
+    this.shares = 0,
+    this.engagement = 0,
+    this.views = 0,
+    this.type = 'text',
+    required this.date,
+  });
+
+  factory TopPost.fromJson(Map<String, dynamic> json) {
+    return TopPost(
+      id: json['_id'] ?? '',
+      description: json['description'] ?? '',
+      image: json['image'],
+      media: (json['media'] as List?)?.map((e) => e.toString()).toList() ?? [],
+      likes: json['likes'] ?? 0,
+      comments: json['comments'] ?? 0,
+      shares: json['shares'] ?? 0,
+      engagement: json['engagement'] ?? 0,
+      views: json['views'] ?? 0,
+      type: json['type'] ?? 'text',
+      date: DateTime.tryParse(json['date'] ?? '') ?? DateTime.now(),
+    );
+  }
+}
+
+class RecentActivity {
+  final String id;
+  final String type; // reaction | comment | new_follower
+  final String message;
+  final DateTime createdAt;
+  final String? postId;
+  final String? userPic;
+
+  RecentActivity({
+    required this.id,
+    required this.type,
+    required this.message,
+    required this.createdAt,
+    this.postId,
+    this.userPic,
+  });
+
+  factory RecentActivity.fromJson(Map<String, dynamic> json) {
+    return RecentActivity(
+      id: json['_id'] ?? '',
+      type: json['type'] ?? '',
+      message: json['message'] ?? '',
+      createdAt:
+          DateTime.tryParse(json['createdAt'] ?? '') ?? DateTime.now(),
+      postId: json['post_id'],
+      userPic: json['user_pic'],
+    );
+  }
+}
+
+class OnboardingProgress {
+  final bool connectedSocial;
+  final bool createdPost;
+  final bool repliedMessage;
+  final bool grewAudience;
+  final int completed;
+  final int total;
+
+  OnboardingProgress({
+    this.connectedSocial = false,
+    this.createdPost = false,
+    this.repliedMessage = false,
+    this.grewAudience = false,
+    this.completed = 0,
+    this.total = 4,
+  });
+
+  bool get isComplete => completed >= total;
+
+  factory OnboardingProgress.fromJson(Map<String, dynamic> json) {
+    final steps = json['steps'] as Map<String, dynamic>? ?? {};
+    return OnboardingProgress(
+      connectedSocial: steps['connected_social'] ?? false,
+      createdPost: steps['created_post'] ?? false,
+      repliedMessage: steps['replied_message'] ?? false,
+      grewAudience: steps['grew_audience'] ?? false,
+      completed: json['completed'] ?? 0,
+      total: json['total'] ?? 4,
+    );
+  }
+}
+
+class DashboardData {
+  final DashboardKpis kpis;
+  final List<TrendPoint> trend;
+  final List<TopPost> topPosts;
+  final List<RecentActivity> recentActivity;
+  final OnboardingProgress onboarding;
+
+  DashboardData({
+    required this.kpis,
+    required this.trend,
+    required this.topPosts,
+    required this.recentActivity,
+    required this.onboarding,
+  });
+
+  factory DashboardData.fromJson(Map<String, dynamic> json) {
+    return DashboardData(
+      kpis: DashboardKpis.fromJson(json['kpis'] ?? {}),
+      trend: (json['insights_trend'] as List?)
+              ?.map((e) => TrendPoint.fromJson(e))
+              .toList() ??
+          [],
+      topPosts: (json['top_posts'] as List?)
+              ?.map((e) => TopPost.fromJson(e))
+              .toList() ??
+          [],
+      recentActivity: (json['recent_activity'] as List?)
+              ?.map((e) => RecentActivity.fromJson(e))
+              .toList() ??
+          [],
+      onboarding:
+          OnboardingProgress.fromJson(json['onboarding'] ?? {}),
+    );
+  }
+}
