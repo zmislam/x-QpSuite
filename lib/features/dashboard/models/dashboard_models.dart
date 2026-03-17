@@ -20,6 +20,34 @@ class DashboardKpi {
   static DashboardKpi zero() => const DashboardKpi(value: 0, change: 0, changePct: 0);
 }
 
+/// Page info returned inside the dashboard response.
+class DashboardPageInfo {
+  final String id;
+  final String pageName;
+  final String? profilePic;
+  final String? coverPic;
+  final String? category;
+
+  DashboardPageInfo({
+    required this.id,
+    required this.pageName,
+    this.profilePic,
+    this.coverPic,
+    this.category,
+  });
+
+  factory DashboardPageInfo.fromJson(Map<String, dynamic> json) {
+    final cat = json['category'];
+    return DashboardPageInfo(
+      id: (json['_id'] ?? json['id'] ?? '').toString(),
+      pageName: json['page_name'] ?? '',
+      profilePic: json['profile_pic'] as String?,
+      coverPic: json['cover_pic'] as String?,
+      category: cat is List ? (cat).join(', ') : cat as String?,
+    );
+  }
+}
+
 class DashboardKpis {
   final DashboardKpi followers;
   final DashboardKpi reach;
@@ -230,22 +258,29 @@ class OnboardingProgress {
 }
 
 class DashboardData {
+  final DashboardPageInfo? pageInfo;
   final DashboardKpis kpis;
   final List<TrendPoint> trend;
   final List<TopPost> topPosts;
   final List<RecentActivity> recentActivity;
+  final List<TodoItem> todos;
   final OnboardingProgress onboarding;
 
   DashboardData({
+    this.pageInfo,
     required this.kpis,
     required this.trend,
     required this.topPosts,
     required this.recentActivity,
+    required this.todos,
     required this.onboarding,
   });
 
   factory DashboardData.fromJson(Map<String, dynamic> json) {
     return DashboardData(
+      pageInfo: json['page'] != null
+          ? DashboardPageInfo.fromJson(json['page'])
+          : null,
       kpis: DashboardKpis.fromJson(json['kpis'] ?? {}),
       trend: (json['insights_trend'] as List?)
               ?.map((e) => TrendPoint.fromJson(e))
@@ -259,8 +294,36 @@ class DashboardData {
               ?.map((e) => RecentActivity.fromJson(e))
               .toList() ??
           [],
+      todos: (json['todos'] as List?)
+              ?.map((e) => TodoItem.fromJson(e))
+              .toList() ??
+          [],
       onboarding:
           OnboardingProgress.fromJson(json['onboarding'] ?? {}),
+    );
+  }
+}
+
+/// A to-do item from the dashboard.
+class TodoItem {
+  final String id;
+  final String type;
+  final String title;
+  final int count;
+
+  TodoItem({
+    required this.id,
+    required this.type,
+    required this.title,
+    this.count = 0,
+  });
+
+  factory TodoItem.fromJson(Map<String, dynamic> json) {
+    return TodoItem(
+      id: (json['_id'] ?? json['id'] ?? '').toString(),
+      type: json['type'] ?? '',
+      title: json['title'] ?? '',
+      count: json['count'] ?? 0,
     );
   }
 }

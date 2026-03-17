@@ -2,7 +2,7 @@ class ApiConstants {
   /// Override at build time: --dart-define=API_BASE_URL=https://api.example.com/api
   static const String baseUrl = String.fromEnvironment(
     'API_BASE_URL',
-    defaultValue: 'http://192.168.0.102:9000/api',
+    defaultValue: 'https://qposs.com:82/api',
   );
 
   /// Server origin (e.g. http://192.168.0.102:9000)
@@ -18,10 +18,110 @@ class ApiConstants {
   }
 
   /// Build a full media URL from a relative path.
+  /// If the path already starts with http, normalize it.
+  /// Otherwise, prepend the server origin + /uploads/.
   static String mediaUrl(String? path) {
     if (path == null || path.isEmpty) return '';
     if (path.startsWith('http')) return normalizeUrl(path);
-    return '$serverOrigin$path';
+    // If already includes /uploads/, just prepend origin
+    if (path.startsWith('/uploads/') || path.startsWith('uploads/')) {
+      final cleanPath = path.startsWith('/') ? path : '/$path';
+      return '$serverOrigin$cleanPath';
+    }
+    // Default: treat as user profile upload
+    return '$serverOrigin/uploads/$path';
+  }
+
+  /// Page profile picture URL (uploads/pages/)
+  static String pageProfileUrl(String? filename) {
+    if (filename == null || filename.isEmpty) return '';
+    if (filename.startsWith('http')) return normalizeUrl(filename);
+    return '$serverOrigin/uploads/pages/$filename';
+  }
+
+  /// Page cover picture URL (uploads/pages/)
+  static String pageCoverUrl(String? filename) {
+    if (filename == null || filename.isEmpty) return '';
+    if (filename.startsWith('http')) return normalizeUrl(filename);
+    return '$serverOrigin/uploads/pages/$filename';
+  }
+
+  /// Post media URL (uploads/posts/)
+  static String postMediaUrl(String? filename) {
+    if (filename == null || filename.isEmpty) return '';
+    if (filename.startsWith('http')) return normalizeUrl(filename);
+    return '$serverOrigin/uploads/posts/$filename';
+  }
+
+  /// Video thumbnail URL (uploads/posts/thumbnails/)
+  static String videoThumbnailUrl(String? filename) {
+    if (filename == null || filename.isEmpty) return '';
+    if (filename.startsWith('http')) return normalizeUrl(filename);
+    return '$serverOrigin/uploads/posts/thumbnails/$filename';
+  }
+
+  /// User profile picture URL (uploads/)
+  static String userProfileUrl(String? filename) {
+    if (filename == null || filename.isEmpty) return '';
+    if (filename.startsWith('http')) return normalizeUrl(filename);
+    return '$serverOrigin/uploads/$filename';
+  }
+
+  /// Reel media URL (uploads/reels/)
+  static String reelMediaUrl(String? filename) {
+    if (filename == null || filename.isEmpty) return '';
+    if (filename.startsWith('http')) return normalizeUrl(filename);
+    return '$serverOrigin/uploads/reels/$filename';
+  }
+
+  /// Reel thumbnail URL (uploads/reels/thumbnails/)
+  static String reelThumbnailUrl(String? filename) {
+    if (filename == null || filename.isEmpty) return '';
+    if (filename.startsWith('http')) return normalizeUrl(filename);
+    return '$serverOrigin/uploads/reels/thumbnails/$filename';
+  }
+
+  /// Story media URL (uploads/story/)
+  static String storyMediaUrl(String? filename) {
+    if (filename == null || filename.isEmpty) return '';
+    if (filename.startsWith('http')) return normalizeUrl(filename);
+    return '$serverOrigin/uploads/story/$filename';
+  }
+
+  /// Page post media URL (uploads/pages/posts/)
+  static String pagePostMediaUrl(String? filename) {
+    if (filename == null || filename.isEmpty) return '';
+    if (filename.startsWith('http')) return normalizeUrl(filename);
+    return '$serverOrigin/uploads/pages/posts/$filename';
+  }
+
+  /// Returns the best displayable URL for a content media item.
+  /// For videos, prefers thumbnail. Uses mediaBaseDir to determine path.
+  static String contentMediaDisplayUrl({
+    required String url,
+    String? thumbnailUrl,
+    String type = 'image',
+    String? mediaBaseDir,
+  }) {
+    final isVideo = type == 'video' ||
+        const ['mp4', 'mov', 'avi', 'mkv', 'webm']
+            .any((ext) => url.toLowerCase().endsWith('.$ext'));
+    // For videos, prefer thumbnail if available
+    if (isVideo && thumbnailUrl != null && thumbnailUrl.isNotEmpty) {
+      if (mediaBaseDir == 'reels') return reelThumbnailUrl(thumbnailUrl);
+      return videoThumbnailUrl(thumbnailUrl);
+    }
+    // For images or video without thumbnail, use media URL
+    if (mediaBaseDir == 'reels') return reelMediaUrl(url);
+    if (mediaBaseDir == 'story') return storyMediaUrl(url);
+    return postMediaUrl(url);
+  }
+
+  /// Group profile URL (uploads/group/)
+  static String groupProfileUrl(String? filename) {
+    if (filename == null || filename.isEmpty) return '';
+    if (filename.startsWith('http')) return normalizeUrl(filename);
+    return '$serverOrigin/uploads/group/$filename';
   }
 
   // ── Auth ──────────────────────────────────────────
@@ -145,4 +245,27 @@ class ApiConstants {
   // ── Bulk Actions ──────────────────────────────────
   static const String bulkAction = '/campaigns-v2/bulk-action';
   static String duplicate(String id) => '/campaigns-v2/duplicate/$id';
+
+  // ── Posts (Social API) ────────────────────────────
+  static String allPosts({int pageNo = 1, int pageSize = 10}) =>
+      '/get-all-users-posts-v2?pageNo=$pageNo&pageSize=$pageSize';
+  static const String individualPosts =
+      '/get-all-users-posts-individual-for-app';
+  static const String pagePosts = '/get-pages-posts';
+  static const String savePagePost = '/save-page-post';
+  static const String reactOnPost = '/save-reaction-main-post';
+  static String getComments(String postId) =>
+      '/get-all-comments-direct-post/$postId';
+  static const String sendComment = '/save-user-comment-by-post';
+  static const String replyComment = '/reply-comment-by-direct-post';
+  static const String reactOnComment =
+      '/save-comment-reaction-of-direct-post';
+  static String reactionUserList(String postId) =>
+      '/reaction-user-lists-of-direct-post/$postId';
+  static const String deleteComment = '/delete-single-comment';
+  static const String savePost = '/save-post';
+  static const String hidePost = '/hide-unhide-post';
+  static const String bookmarkPost = '/save-post-bookmark';
+  static String removeBookmark(String bookmarkId) =>
+      '/remove-post-bookmark/$bookmarkId';
 }

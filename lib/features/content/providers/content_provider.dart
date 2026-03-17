@@ -17,6 +17,16 @@ class ContentProvider extends ChangeNotifier {
   ContentFilter _filter = ContentFilter.all;
   ContentTypeFilter _typeFilter = ContentTypeFilter.all;
 
+  // Per-type content lists
+  List<ContentItem> _reelItems = [];
+  List<ContentItem> _storyItems = [];
+  List<ContentItem> _mentionItems = [];
+  List<ContentItem> _photoItems = [];
+  bool _isTypeLoading = false;
+
+  // Posts filter state
+  String _postsFilter = 'Published'; // Published | Scheduled | Drafts
+
   // Calendar
   Map<String, CalendarDay> _calendarDays = {};
   String _calendarMonth = '';
@@ -32,6 +42,19 @@ class ContentProvider extends ChangeNotifier {
   ContentTypeFilter get typeFilter => _typeFilter;
   Map<String, CalendarDay> get calendarDays => _calendarDays;
   bool get isCalendarLoading => _isCalendarLoading;
+
+  // Per-type getters
+  List<ContentItem> get reelItems => _reelItems;
+  List<ContentItem> get storyItems => _storyItems;
+  List<ContentItem> get mentionItems => _mentionItems;
+  List<ContentItem> get photoItems => _photoItems;
+  bool get isTypeLoading => _isTypeLoading;
+  String get postsFilter => _postsFilter;
+
+  void setPostsFilter(String filter) {
+    _postsFilter = filter;
+    notifyListeners();
+  }
 
   void setFilter(ContentFilter f, String pageId) {
     if (f == _filter) return;
@@ -152,5 +175,50 @@ class ContentProvider extends ChangeNotifier {
     } catch (_) {
       return false;
     }
+  }
+
+  /// Fetch content filtered by type: 'Reel', 'Story', 'Mention', 'Photo'
+  Future<void> fetchContentByType(String pageId, String type) async {
+    _isTypeLoading = true;
+    notifyListeners();
+
+    try {
+      final params = <String, dynamic>{
+        'page': 1,
+        'limit': 50,
+        'content_type': type,
+      };
+
+      final res = await _api.get(
+        ApiConstants.content(pageId),
+        queryParameters: params,
+      );
+
+      if (res.data['success'] == true) {
+        final list = (res.data['data'] as List?)
+                ?.map((e) => ContentItem.fromJson(e))
+                .toList() ??
+            [];
+        switch (type) {
+          case 'Reel':
+            _reelItems = list;
+            break;
+          case 'Story':
+            _storyItems = list;
+            break;
+          case 'Mention':
+            _mentionItems = list;
+            break;
+          case 'Photo':
+            _photoItems = list;
+            break;
+        }
+      }
+    } catch (_) {
+      // Silently handle — the tab will show empty state
+    }
+
+    _isTypeLoading = false;
+    notifyListeners();
   }
 }

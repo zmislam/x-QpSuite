@@ -1,5 +1,7 @@
 // Models for the Insights & Analytics feature.
 
+import '../../../core/constants/api_constants.dart';
+
 class InsightsSummary {
   final int reach;
   final double reachTrend;
@@ -231,6 +233,7 @@ class AudienceData {
 class ContentPerformanceItem {
   final String postId;
   final String? thumbnail;
+  final bool isVideoThumbnail;
   final String description;
   final int reach;
   final int engagement;
@@ -239,16 +242,28 @@ class ContentPerformanceItem {
   ContentPerformanceItem({
     required this.postId,
     required this.thumbnail,
+    this.isVideoThumbnail = false,
     required this.description,
     required this.reach,
     required this.engagement,
     required this.clicks,
   });
 
+  String get thumbnailUrl {
+    if (thumbnail == null || thumbnail!.isEmpty) return '';
+    if (isVideoThumbnail) return ApiConstants.videoThumbnailUrl(thumbnail);
+    return ApiConstants.postMediaUrl(thumbnail);
+  }
+
   factory ContentPerformanceItem.fromJson(Map<String, dynamic> json) {
+    final videoThumb = json['media']?[0]?['video_thumbnail'];
+    final hasVideoThumb = videoThumb != null && videoThumb.toString().isNotEmpty;
     return ContentPerformanceItem(
       postId: json['_id'] ?? json['id'] ?? '',
-      thumbnail: json['thumbnail'] ?? json['media']?[0]?['url'],
+      thumbnail: json['thumbnail'] ??
+          videoThumb ??
+          json['media']?[0]?['url'],
+      isVideoThumbnail: hasVideoThumb && json['thumbnail'] == null,
       description: json['description'] ?? '',
       reach: json['reach'] ?? 0,
       engagement: json['engagement'] ?? 0,
@@ -259,51 +274,135 @@ class ContentPerformanceItem {
 
 // ── Post-Level Insights ─────────────────────────────
 
-class PostInsightsData {
-  final String description;
-  final String? createdAt;
-  final String? postType;
-  final int reach;
+class PostInsightsTimeline {
+  final String date;
   final int impressions;
-  final int engagement;
+  final int engagements;
   final int clicks;
-  final Map<String, int> reactionsBreakdown;
-  final int commentsCount;
-  final int sharesCount;
-  final int savesCount;
 
-  PostInsightsData({
-    required this.description,
-    this.createdAt,
-    this.postType,
-    required this.reach,
+  PostInsightsTimeline({
+    required this.date,
     required this.impressions,
-    required this.engagement,
+    required this.engagements,
     required this.clicks,
-    required this.reactionsBreakdown,
-    required this.commentsCount,
-    required this.sharesCount,
-    required this.savesCount,
   });
 
+  factory PostInsightsTimeline.fromJson(Map<String, dynamic> json) {
+    return PostInsightsTimeline(
+      date: json['date'] ?? '',
+      impressions: json['impressions'] ?? 0,
+      engagements: json['engagements'] ?? 0,
+      clicks: json['clicks'] ?? 0,
+    );
+  }
+}
+
+class PostInsightsData {
+  final String? postId;
+  final String? createdAt;
+
+  // Overview
+  final int viewCount;
+  final int impressions;
+  final int uniqueViewers;
+  final int clicks;
+  final double ctr;
+  final int engagements;
+  final double engagementRate;
+  final int shares;
+  final int saves;
+  final int reactions;
+  final int commentsCount;
+  final int postShares;
+  final int avgDwellTimeMs;
+  final int avgVideoWatchPct;
+
+  // Timeline
+  final List<PostInsightsTimeline> timeline;
+
+  // Demographics
+  final Map<String, int> gender; // male, female, other
+  final List<Map<String, dynamic>> ageGroups;
+
+  // Locations
+  final List<Map<String, dynamic>> topCountries;
+  final List<Map<String, dynamic>> topCities;
+
+  // Sources
+  final List<Map<String, dynamic>> sources;
+
+  PostInsightsData({
+    this.postId,
+    this.createdAt,
+    required this.viewCount,
+    required this.impressions,
+    required this.uniqueViewers,
+    required this.clicks,
+    required this.ctr,
+    required this.engagements,
+    required this.engagementRate,
+    required this.shares,
+    required this.saves,
+    required this.reactions,
+    required this.commentsCount,
+    required this.postShares,
+    required this.avgDwellTimeMs,
+    required this.avgVideoWatchPct,
+    required this.timeline,
+    required this.gender,
+    required this.ageGroups,
+    required this.topCountries,
+    required this.topCities,
+    required this.sources,
+  });
+
+  /// Total interactions = reactions + comments + shares + saves
+  int get totalInteractions => reactions + commentsCount + postShares + saves;
+
   factory PostInsightsData.fromJson(Map<String, dynamic> json) {
-    final post = json['post'] ?? {};
-    final metrics = json['metrics'] ?? {};
-    final reactions = metrics['reactions_breakdown'] as Map<String, dynamic>? ?? {};
+    final overview = json['overview'] ?? {};
+    final demographics = json['demographics'] ?? {};
+    final locations = json['locations'] ?? {};
+    final genderRaw = demographics['gender'] as Map<String, dynamic>? ?? {};
+    final ageGroupsRaw = demographics['age_groups'] as List? ?? [];
+    final countriesRaw = locations['top_countries'] as List? ?? [];
+    final citiesRaw = locations['top_cities'] as List? ?? [];
+    final sourcesRaw = json['sources'] as List? ?? [];
+    final timelineRaw = json['timeline'] as List? ?? [];
 
     return PostInsightsData(
-      description: post['description'] ?? '',
-      createdAt: post['createdAt'],
-      postType: post['post_type'],
-      reach: metrics['reach'] ?? 0,
-      impressions: metrics['impressions'] ?? 0,
-      engagement: metrics['engagement'] ?? 0,
-      clicks: metrics['clicks'] ?? 0,
-      reactionsBreakdown:
-          reactions.map((k, v) => MapEntry(k, (v as num).toInt())),
-      commentsCount: metrics['comments_count'] ?? 0,
-      sharesCount: metrics['shares_count'] ?? 0,
-      savesCount: metrics['saves_count'] ?? 0,
+      postId: json['post_id'],
+      createdAt: json['created_at'],
+      viewCount: overview['view_count'] ?? 0,
+      impressions: overview['impressions'] ?? 0,
+      uniqueViewers: overview['unique_viewers'] ?? 0,
+      clicks: overview['clicks'] ?? 0,
+      ctr: (overview['ctr'] ?? 0).toDouble(),
+      engagements: overview['engagements'] ?? 0,
+      engagementRate: (overview['engagement_rate'] ?? 0).toDouble(),
+      shares: overview['shares'] ?? 0,
+      saves: overview['saves'] ?? 0,
+      reactions: overview['reactions'] ?? 0,
+      commentsCount: overview['comments'] ?? 0,
+      postShares: overview['post_shares'] ?? 0,
+      avgDwellTimeMs: overview['avg_dwell_time_ms'] ?? 0,
+      avgVideoWatchPct: overview['avg_video_watch_pct'] ?? 0,
+      timeline: timelineRaw
+          .map((e) => PostInsightsTimeline.fromJson(e as Map<String, dynamic>))
+          .toList(),
+      gender: genderRaw.map((k, v) => MapEntry(k, (v as num).toInt())),
+      ageGroups: ageGroupsRaw
+          .map((e) => Map<String, dynamic>.from(e as Map))
+          .toList(),
+      topCountries: countriesRaw
+          .map((e) => Map<String, dynamic>.from(e as Map))
+          .toList(),
+      topCities: citiesRaw
+          .map((e) => Map<String, dynamic>.from(e as Map))
+          .toList(),
+      sources: sourcesRaw
+          .map((e) => Map<String, dynamic>.from(e as Map))
+          .toList(),
     );
   }
 }

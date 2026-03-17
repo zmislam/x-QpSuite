@@ -126,7 +126,7 @@ class _NotificationTile extends StatelessWidget {
         leading: CircleAvatar(
           backgroundImage: notification.actor?.avatar != null
               ? NetworkImage(
-                  ApiConstants.mediaUrl(notification.actor!.avatar!))
+                  ApiConstants.userProfileUrl(notification.actor!.avatar!))
               : null,
           child: notification.actor?.avatar == null
               ? Icon(_iconForType(notification.type))

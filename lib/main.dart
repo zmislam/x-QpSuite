@@ -13,6 +13,7 @@ import 'features/inbox/providers/inbox_provider.dart';
 import 'features/insights/providers/insights_provider.dart';
 import 'features/notifications/providers/notifications_provider.dart';
 import 'features/page_switcher/providers/managed_pages_provider.dart';
+import 'features/posts/providers/post_provider.dart';
 import 'features/todos/providers/todos_provider.dart';
 
 void main() async {
@@ -31,7 +32,7 @@ void main() async {
           create: (_) => AuthProvider(
             api: apiService,
             socket: socketService,
-          )..initAuth(),
+          ),
         ),
         ChangeNotifierProxyProvider<AuthProvider, ManagedPagesProvider>(
           create: (_) => ManagedPagesProvider(api: apiService),
@@ -62,6 +63,9 @@ void main() async {
         ),
         ChangeNotifierProvider(
           create: (_) => BoostProvider(api: apiService),
+        ),
+        ChangeNotifierProvider(
+          create: (_) => PostProvider(api: apiService),
         ),
       ],
       child: const QpSuiteApp(),

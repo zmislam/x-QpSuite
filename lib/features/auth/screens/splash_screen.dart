@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import '../../../core/constants/app_constants.dart';
 import '../../../core/theme/app_colors.dart';
@@ -20,6 +21,13 @@ class _SplashScreenState extends State<SplashScreen> {
 
   Future<void> _init() async {
     await context.read<AuthProvider>().initAuth();
+    if (!mounted) return;
+    final auth = context.read<AuthProvider>();
+    if (auth.isAuthenticated) {
+      context.go('/home');
+    } else {
+      context.go('/login');
+    }
   }
 
   @override

@@ -46,14 +46,22 @@ class AuthProvider extends ChangeNotifier {
 
     // Verify token is still valid by fetching profile
     try {
-      final res = await _api.get(ApiConstants.userProfile);
-      if (res.data['success'] == true) {
-        _user = UserModel.fromJson(res.data['data']);
-        _isAuthenticated = true;
-        await StorageService.setString(
-            StorageKeys.userJson, jsonEncode(_user!.toJson()));
-        _socket.connect(token);
+      if (_user != null) {
+        final res = await _api.post(
+          ApiConstants.userProfile,
+          data: {'user_id': _user!.id},
+        );
+        if (res.data['status'] == 200 && res.data['data'] != null) {
+          _user = UserModel.fromJson(res.data['data']);
+          _isAuthenticated = true;
+          await StorageService.setString(
+              StorageKeys.userJson, jsonEncode(_user!.toJson()));
+          _socket.connect(token);
+        } else {
+          await _clearSession();
+        }
       } else {
+        // No cached user, can't verify — clear session
         await _clearSession();
       }
     } catch (e) {
@@ -79,9 +87,9 @@ class AuthProvider extends ChangeNotifier {
         data: {'email': email, 'password': password},
       );
 
-      if (res.data['success'] == true) {
-        final token = res.data['token'] as String;
-        _user = UserModel.fromJson(res.data['data']);
+      if (res.data['status'] == 200) {
+        final token = res.data['accessToken'] as String;
+        _user = UserModel.fromJson(res.data['user']);
         _isAuthenticated = true;
         _api.setToken(token);
         await StorageService.setToken(token);

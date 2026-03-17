@@ -152,7 +152,7 @@ class _ContentTile extends StatelessWidget {
                 borderRadius: BorderRadius.circular(8),
                 child: item.thumbnail != null
                     ? Image.network(
-                        ApiConstants.mediaUrl(item.thumbnail!),
+                        item.thumbnailUrl,
                         width: 56,
                         height: 56,
                         fit: BoxFit.cover,

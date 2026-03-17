@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../../core/constants/api_constants.dart';
 import '../../core/theme/app_colors.dart';
 import '../../features/page_switcher/providers/managed_pages_provider.dart';
 
@@ -25,7 +26,7 @@ class PageSwitcher extends StatelessWidget {
           CircleAvatar(
             radius: 14,
             backgroundImage: activePage.profilePic != null
-                ? NetworkImage(activePage.profilePic!)
+                ? NetworkImage(activePage.profilePicUrl)
                 : null,
             child: activePage.profilePic == null
                 ? Text(
@@ -89,7 +90,7 @@ class PageSwitcher extends StatelessWidget {
                 (page) => ListTile(
                   leading: CircleAvatar(
                     backgroundImage: page.profilePic != null
-                        ? NetworkImage(page.profilePic!)
+                        ? NetworkImage(page.profilePicUrl)
                         : null,
                     child: page.profilePic == null
                         ? Text(page.pageName[0].toUpperCase())

@@ -139,7 +139,7 @@ class _BoostedPostCard extends StatelessWidget {
                   ClipRRect(
                     borderRadius: BorderRadius.circular(8),
                     child: Image.network(
-                      ApiConstants.mediaUrl(post.postThumbnail!),
+                      ApiConstants.postMediaUrl(post.postThumbnail!),
                       width: 48,
                       height: 48,
                       fit: BoxFit.cover,

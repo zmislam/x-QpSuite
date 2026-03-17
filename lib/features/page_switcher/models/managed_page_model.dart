@@ -17,14 +17,16 @@ class ManagedPageModel {
     required this.followersCount,
   });
 
-  String get profilePicUrl => ApiConstants.mediaUrl(profilePic);
+  String get profilePicUrl => ApiConstants.pageProfileUrl(profilePic);
 
   factory ManagedPageModel.fromJson(Map<String, dynamic> json) {
     return ManagedPageModel(
       id: (json['_id'] ?? json['id'] ?? '').toString(),
       pageName: json['page_name'] ?? '',
       profilePic: json['profile_pic'] as String?,
-      category: json['category'] as String?,
+      category: json['category'] is List
+          ? (json['category'] as List).join(', ')
+          : json['category'] as String?,
       role: json['role'] ?? 'owner',
       followersCount: json['followers_count'] ?? 0,
     );

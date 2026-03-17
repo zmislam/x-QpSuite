@@ -2,14 +2,21 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import '../../../core/theme/app_colors.dart';
-import '../../../core/utils/formatters.dart';
+import '../../../core/services/api_service.dart';
+import '../../../features/auth/providers/auth_provider.dart';
 import '../../../features/page_switcher/providers/managed_pages_provider.dart';
+import '../../../features/posts/providers/post_provider.dart';
+import '../../../features/posts/widgets/post_card.dart';
+import '../../../features/posts/widgets/comment_modal.dart';
+import '../../../features/posts/widgets/reactions_bottom_sheet.dart';
 import '../../../shared/widgets/empty_state.dart';
-import '../../../shared/widgets/error_state.dart';
 import '../../../shared/widgets/qp_loading.dart';
-import '../../../shared/widgets/status_badge.dart';
-import '../models/content_models.dart';
 import '../providers/content_provider.dart';
+import '../widgets/content_post_card.dart';
+import '../widgets/reels_tab.dart';
+import '../widgets/stories_tab.dart';
+import '../widgets/mentions_tab.dart';
+import '../widgets/photos_tab.dart';
 
 class ContentScreen extends StatefulWidget {
   const ContentScreen({super.key});
@@ -18,430 +25,388 @@ class ContentScreen extends StatefulWidget {
   State<ContentScreen> createState() => _ContentScreenState();
 }
 
-class _ContentScreenState extends State<ContentScreen> {
-  final _scrollController = ScrollController();
+class _ContentScreenState extends State<ContentScreen>
+    with SingleTickerProviderStateMixin {
+  late TabController _tabController;
+  String? _lastPageId;
+
+  static const _tabs = [
+    'Posts',
+    'Reels',
+    'Stories',
+    'Mentions and tags',
+    'Photos',
+  ];
 
   @override
   void initState() {
     super.initState();
-    _scrollController.addListener(_onScroll);
-    WidgetsBinding.instance.addPostFrameCallback((_) => _loadContent());
+    _tabController = TabController(length: _tabs.length, vsync: this);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _loadPostsOnOpen());
   }
 
   @override
   void dispose() {
-    _scrollController.dispose();
+    _tabController.dispose();
     super.dispose();
   }
 
-  void _onScroll() {
-    if (_scrollController.position.pixels >=
-        _scrollController.position.maxScrollExtent - 200) {
-      final pageId =
-          context.read<ManagedPagesProvider>().activePageId;
-      if (pageId != null) {
-        context.read<ContentProvider>().fetchContent(pageId, loadMore: true);
-      }
-    }
-  }
-
-  void _loadContent() {
-    final pageId =
-        context.read<ManagedPagesProvider>().activePageId;
+  void _loadPostsOnOpen() {
+    final pageId = context.read<ManagedPagesProvider>().activePageId;
     if (pageId != null) {
-      context.read<ContentProvider>().fetchContent(pageId);
+      _lastPageId = pageId;
+      context.read<PostProvider>().fetchPagePosts(pageId, refresh: true);
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final content = context.watch<ContentProvider>();
-    final pageId =
-        context.watch<ManagedPagesProvider>().activePageId;
+    // Watch for page changes and reload posts
+    final pageId = context.watch<ManagedPagesProvider>().activePageId;
+    if (pageId != null && pageId != _lastPageId) {
+      _lastPageId = pageId;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          context.read<PostProvider>().fetchPagePosts(pageId, refresh: true);
+        }
+      });
+    }
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Content'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.calendar_month),
-            onPressed: () => context.go('/content/calendar'),
-          ),
-        ],
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => context.go('/content/schedule'),
-        icon: const Icon(Icons.add),
-        label: const Text('Schedule'),
-      ),
-      body: Column(
-        children: [
-          // ── Filters ──
-          _FilterBar(
-            filter: content.filter,
-            typeFilter: content.typeFilter,
-            onFilterChanged: (f) {
-              if (pageId != null) content.setFilter(f, pageId);
-            },
-            onTypeChanged: (t) {
-              if (pageId != null) content.setTypeFilter(t, pageId);
-            },
-          ),
-          // ── Content list ──
-          Expanded(child: _buildList(content)),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildList(ContentProvider content) {
-    if (content.isLoading && content.items.isEmpty) {
-      return const Padding(
-        padding: EdgeInsets.all(16),
-        child: QpLoading(itemCount: 4, height: 120),
-      );
-    }
-
-    if (content.error != null && content.items.isEmpty) {
-      return ErrorState(message: content.error!, onRetry: _loadContent);
-    }
-
-    if (content.items.isEmpty) {
-      return const EmptyState(
-        icon: Icons.article_outlined,
-        title: 'No content yet',
-        subtitle: 'Schedule your first post to get started.',
-      );
-    }
-
-    return RefreshIndicator(
-      onRefresh: () async => _loadContent(),
-      child: ListView.builder(
-        controller: _scrollController,
-        padding: const EdgeInsets.all(16),
-        itemCount: content.items.length + (content.hasMore ? 1 : 0),
-        itemBuilder: (context, index) {
-          if (index >= content.items.length) {
-            return const Padding(
-              padding: EdgeInsets.all(16),
-              child: Center(child: CircularProgressIndicator()),
-            );
-          }
-          return _ContentCard(
-            item: content.items[index],
-            onDelete: () {
-              final pageId =
-                  context.read<ManagedPagesProvider>().activePageId;
-              if (pageId != null) {
-                _confirmDelete(context, content, pageId, content.items[index]);
-              }
-            },
-            onPublishNow: content.items[index].isScheduled
-                ? () {
-                    final pageId =
-                        context.read<ManagedPagesProvider>().activePageId;
-                    if (pageId != null) {
-                      content.publishNow(pageId, content.items[index].id);
-                    }
-                  }
-                : null,
-          );
-        },
-      ),
-    );
-  }
-
-  void _confirmDelete(BuildContext context, ContentProvider content,
-      String pageId, ContentItem item) {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Delete Content'),
-        content: const Text('This cannot be undone. Are you sure?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () {
-              Navigator.pop(ctx);
-              content.deleteContent(pageId, item);
-            },
-            style: FilledButton.styleFrom(
-              backgroundColor: AppColors.error,
-            ),
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// ─── Filter Bar ────────────────────────────────────
-
-class _FilterBar extends StatelessWidget {
-  final ContentFilter filter;
-  final ContentTypeFilter typeFilter;
-  final ValueChanged<ContentFilter> onFilterChanged;
-  final ValueChanged<ContentTypeFilter> onTypeChanged;
-
-  const _FilterBar({
-    required this.filter,
-    required this.typeFilter,
-    required this.onFilterChanged,
-    required this.onTypeChanged,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: [
-        // Main filter
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          child: SegmentedButton<ContentFilter>(
-            segments: const [
-              ButtonSegment(value: ContentFilter.all, label: Text('All')),
-              ButtonSegment(value: ContentFilter.published, label: Text('Published')),
-              ButtonSegment(value: ContentFilter.scheduled, label: Text('Scheduled')),
-            ],
-            selected: {filter},
-            onSelectionChanged: (s) => onFilterChanged(s.first),
-          ),
-        ),
-        // Type chips
-        SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: Row(
-            children: ContentTypeFilter.values.map((t) {
-              final label = t == ContentTypeFilter.all
-                  ? 'All'
-                  : '${t.name[0].toUpperCase()}${t.name.substring(1)}s';
-              return Padding(
-                padding: const EdgeInsets.only(right: 8),
-                child: FilterChip(
-                  label: Text(label),
-                  selected: typeFilter == t,
-                  onSelected: (_) => onTypeChanged(t),
-                ),
-              );
-            }).toList(),
-          ),
-        ),
-        const SizedBox(height: 8),
-      ],
-    );
-  }
-}
-
-// ─── Content Card ──────────────────────────────────
-
-class _ContentCard extends StatelessWidget {
-  final ContentItem item;
-  final VoidCallback onDelete;
-  final VoidCallback? onPublishNow;
-
-  const _ContentCard({
-    required this.item,
-    required this.onDelete,
-    this.onPublishNow,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    return Card(
-      margin: const EdgeInsets.only(bottom: 12),
-      child: Padding(
-        padding: const EdgeInsets.all(12),
+      backgroundColor: Colors.grey[50],
+      body: SafeArea(
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Header row
-            Row(
-              children: [
-                if (item.isScheduled) ...[
-                  StatusBadge(
-                    status: item.isFailed
-                        ? BadgeStatus.rejected
-                        : BadgeStatus.active,
-                    customLabel: item.status ?? 'Scheduled',
-                  ),
-                  const SizedBox(width: 8),
-                ],
-                if (item.isBoosted)
-                  Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: AppColors.primary.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(8),
+            // ── Header: "Content" + Create button ──
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 16, 16, 0),
+              child: Row(
+                children: [
+                  const Text(
+                    'Content',
+                    style: TextStyle(
+                      fontSize: 26,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.black,
                     ),
-                    child: const Text(
-                      'Boosted',
-                      style: TextStyle(
-                        fontSize: 10,
-                        color: AppColors.primary,
+                  ),
+                  const Spacer(),
+                  FilledButton.icon(
+                    onPressed: () => context.push('/create-post'),
+                    icon: const Icon(Icons.add, size: 18),
+                    label: const Text('Create'),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: AppColors.primary,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 10),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      textStyle: const TextStyle(
+                        fontSize: 14,
                         fontWeight: FontWeight.w600,
                       ),
                     ),
                   ),
-                const Spacer(),
-                _PopupMenu(
-                  item: item,
-                  onDelete: onDelete,
-                  onPublishNow: onPublishNow,
-                ),
-              ],
+                ],
+              ),
             ),
-            const SizedBox(height: 8),
-            // Text
-            if (item.displayText.isNotEmpty)
-              Text(
-                item.displayText,
-                style: theme.textTheme.bodyMedium,
-                maxLines: 3,
-                overflow: TextOverflow.ellipsis,
-              ),
-            // Media thumbnails
-            if (item.media.isNotEmpty) ...[
-              const SizedBox(height: 8),
-              SizedBox(
-                height: 80,
-                child: ListView.separated(
-                  scrollDirection: Axis.horizontal,
-                  itemCount: item.media.length,
-                  separatorBuilder: (_, __) => const SizedBox(width: 8),
-                  itemBuilder: (_, i) {
-                    final m = item.media[i];
-                    return ClipRRect(
-                      borderRadius: BorderRadius.circular(8),
-                      child: Image.network(
-                        m.thumbnailUrl ?? m.url,
-                        width: 80,
-                        height: 80,
-                        fit: BoxFit.cover,
-                        errorBuilder: (_, __, ___) => Container(
-                          width: 80,
-                          height: 80,
-                          color: Colors.grey[300],
-                          child: Icon(
-                            m.type == 'video'
-                                ? Icons.videocam
-                                : Icons.image,
-                            size: 24,
-                          ),
-                        ),
-                      ),
-                    );
-                  },
+            const SizedBox(height: 12),
+            // ── Tab Bar ──
+            Container(
+              decoration: BoxDecoration(
+                border: Border(
+                  bottom: BorderSide(color: Colors.grey[300]!, width: 0.5),
                 ),
               ),
-            ],
-            const SizedBox(height: 8),
-            // Date / Stats row
-            if (item.isPublished)
-              Row(
-                children: [
-                  _stat(Icons.favorite, item.likeCount),
-                  const SizedBox(width: 12),
-                  _stat(Icons.chat_bubble_outline, item.commentCount),
-                  const SizedBox(width: 12),
-                  _stat(Icons.share, item.shareCount),
-                  const SizedBox(width: 12),
-                  _stat(Icons.visibility, item.viewCount),
-                  const Spacer(),
-                  Text(
-                    Formatters.formatTimeAgo(item.createdAt),
-                    style: theme.textTheme.bodySmall,
-                  ),
-                ],
-              )
-            else
-              Row(
-                children: [
-                  const Icon(Icons.schedule, size: 14, color: Colors.grey),
-                  const SizedBox(width: 4),
-                  Text(
-                    item.scheduledFor != null
-                        ? Formatters.formatDateTime(item.scheduledFor!)
-                        : 'No date set',
-                    style: theme.textTheme.bodySmall,
-                  ),
-                  if (item.isFailed && item.failureReason != null) ...[
-                    const Spacer(),
-                    Flexible(
-                      child: Text(
-                        item.failureReason!,
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: AppColors.error,
-                        ),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  ],
+              child: TabBar(
+                controller: _tabController,
+                isScrollable: true,
+                labelColor: AppColors.primary,
+                unselectedLabelColor: Colors.grey[600],
+                indicatorColor: AppColors.primary,
+                indicatorWeight: 3,
+                tabAlignment: TabAlignment.start,
+                labelStyle: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                ),
+                unselectedLabelStyle: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                ),
+                labelPadding:
+                    const EdgeInsets.symmetric(horizontal: 16),
+                tabs: _tabs.map((t) => Tab(text: t)).toList(),
+              ),
+            ),
+            // ── Tab Body ──
+            Expanded(
+              child: TabBarView(
+                controller: _tabController,
+                children: const [
+                  _PostsTab(),
+                  ReelsTab(),
+                  StoriesTab(),
+                  MentionsTab(),
+                  PhotosTab(),
                 ],
               ),
+            ),
           ],
         ),
       ),
     );
   }
+}
 
-  Widget _stat(IconData icon, int count) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
+// ═══════════════════════════════════════════════════════
+// ── POSTS TAB ──
+// ═══════════════════════════════════════════════════════
+
+class _PostsTab extends StatelessWidget {
+  const _PostsTab();
+
+  @override
+  Widget build(BuildContext context) {
+    final postProvider = context.watch<PostProvider>();
+    final contentProvider = context.watch<ContentProvider>();
+    final pageId = context.watch<ManagedPagesProvider>().activePageId;
+
+    return Column(
       children: [
-        Icon(icon, size: 14, color: Colors.grey),
-        const SizedBox(width: 2),
-        Text(
-          Formatters.compactNumber(count),
-          style: const TextStyle(fontSize: 12, color: Colors.grey),
+        // ── Sub-header: "Published ▼  Feed" ──
+        _PostsSubHeader(
+          currentFilter: contentProvider.postsFilter,
+          onFilterChanged: (f) => contentProvider.setPostsFilter(f),
         ),
+        // ── Posts list ──
+        Expanded(child: _buildPostsList(context, postProvider, pageId)),
       ],
+    );
+  }
+
+  Widget _buildPostsList(
+      BuildContext context, PostProvider postProvider, String? pageId) {
+    if (postProvider.isLoading && postProvider.posts.isEmpty) {
+      return const Padding(
+        padding: EdgeInsets.all(16),
+        child: QpLoading(itemCount: 3, height: 200),
+      );
+    }
+
+    if (postProvider.error != null && postProvider.posts.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.error_outline, size: 48, color: Colors.grey[400]),
+            const SizedBox(height: 12),
+            Text(
+              'Could not load posts',
+              style: TextStyle(color: Colors.grey[500], fontSize: 14),
+            ),
+            const SizedBox(height: 12),
+            TextButton(
+              onPressed: () {
+                if (pageId != null) {
+                  postProvider.fetchPagePosts(pageId, refresh: true);
+                }
+              },
+              child: const Text('Retry'),
+            ),
+          ],
+        ),
+      );
+    }
+
+    if (postProvider.posts.isEmpty) {
+      return const EmptyState(
+        icon: Icons.article_outlined,
+        title: 'No posts yet',
+        subtitle: 'Create your first post to get started.',
+      );
+    }
+
+    return RefreshIndicator(
+      onRefresh: () async {
+        if (pageId != null) {
+          await postProvider.fetchPagePosts(pageId, refresh: true);
+        }
+      },
+      child: ListView.builder(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        itemCount: postProvider.posts.length,
+        itemBuilder: (context, index) {
+          final post = postProvider.posts[index];
+          return Padding(
+            padding:
+                const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+            child: ContentPostCard(post: post, index: index),
+          );
+        },
+      ),
     );
   }
 }
 
-class _PopupMenu extends StatelessWidget {
-  final ContentItem item;
-  final VoidCallback onDelete;
-  final VoidCallback? onPublishNow;
+// ─── Posts Sub-Header (Published ▼ + Feed) ─────────
 
-  const _PopupMenu({
-    required this.item,
-    required this.onDelete,
-    this.onPublishNow,
+class _PostsSubHeader extends StatelessWidget {
+  final String currentFilter;
+  final ValueChanged<String> onFilterChanged;
+
+  const _PostsSubHeader({
+    required this.currentFilter,
+    required this.onFilterChanged,
   });
 
   @override
   Widget build(BuildContext context) {
-    return PopupMenuButton<String>(
-      onSelected: (action) {
-        switch (action) {
-          case 'delete':
-            onDelete();
-            break;
-          case 'publish_now':
-            onPublishNow?.call();
-            break;
-        }
-      },
-      itemBuilder: (_) => [
-        if (item.isScheduled && onPublishNow != null)
-          const PopupMenuItem(
-            value: 'publish_now',
-            child: Text('Publish Now'),
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      color: Colors.white,
+      child: Row(
+        children: [
+          // "Published ▼" dropdown button
+          InkWell(
+            borderRadius: BorderRadius.circular(8),
+            onTap: () => _showFilterSheet(context),
+            child: Container(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: Colors.grey[100],
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    currentFilter,
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.black87,
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  Icon(Icons.arrow_drop_down,
+                      size: 20, color: Colors.grey[700]),
+                ],
+              ),
+            ),
           ),
-        const PopupMenuItem(
-          value: 'delete',
-          child: Text('Delete', style: TextStyle(color: Colors.red)),
-        ),
-      ],
+          const SizedBox(width: 8),
+          // "Feed" chip
+          Container(
+            padding:
+                const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              color: Colors.grey[100],
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: const Text(
+              'Feed',
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: Colors.black87,
+              ),
+            ),
+          ),
+          const Spacer(),
+          // Calendar icon
+          IconButton(
+            icon: Icon(Icons.calendar_month_outlined,
+                size: 22, color: Colors.grey[700]),
+            onPressed: () => context.push('/content/calendar'),
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(
+                minWidth: 36, minHeight: 36),
+          ),
+        ],
+      ),
     );
   }
+
+  void _showFilterSheet(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (ctx) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 20),
+                  child: Text(
+                    'View posts that are',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.black,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                ..._filterOptions.map((opt) {
+                  final isSelected = opt == currentFilter;
+                  return ListTile(
+                    leading: Icon(
+                      _iconForFilter(opt),
+                      color: isSelected
+                          ? AppColors.primary
+                          : Colors.grey[600],
+                    ),
+                    title: Text(
+                      opt,
+                      style: TextStyle(
+                        fontWeight: isSelected
+                            ? FontWeight.w600
+                            : FontWeight.w500,
+                        color: isSelected
+                            ? AppColors.primary
+                            : Colors.black87,
+                      ),
+                    ),
+                    trailing: isSelected
+                        ? Icon(Icons.check, color: AppColors.primary)
+                        : null,
+                    onTap: () {
+                      Navigator.pop(ctx);
+                      onFilterChanged(opt);
+                    },
+                  );
+                }),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  static const _filterOptions = ['Published', 'Scheduled', 'Drafts'];
+
+  IconData _iconForFilter(String filter) {
+    switch (filter) {
+      case 'Published':
+        return Icons.check_circle_outline;
+      case 'Scheduled':
+        return Icons.schedule;
+      case 'Drafts':
+        return Icons.edit_note;
+      default:
+        return Icons.filter_list;
+    }
+  }
 }
+

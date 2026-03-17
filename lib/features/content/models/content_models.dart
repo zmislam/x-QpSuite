@@ -93,20 +93,28 @@ class ContentMedia {
   final String type; // image | video
   final String? thumbnailUrl;
   final String? mediaId;
+  final String? mediaBaseDir; // e.g. 'reels', 'story', null for posts
 
   ContentMedia({
     required this.url,
     required this.type,
     this.thumbnailUrl,
     this.mediaId,
+    this.mediaBaseDir,
   });
+
+  bool get isVideo =>
+      type == 'video' ||
+      const ['mp4', 'mov', 'avi', 'mkv', 'webm']
+          .any((ext) => url.toLowerCase().endsWith('.$ext'));
 
   factory ContentMedia.fromJson(Map<String, dynamic> json) {
     return ContentMedia(
       url: json['url'] ?? json['media'] ?? '',
-      type: json['type'] ?? 'image',
+      type: json['type'] ?? (json['mediaType'] ?? 'image'),
       thumbnailUrl: json['thumbnail_url'] ?? json['video_thumbnail'],
       mediaId: json['_id'] ?? json['post_id'],
+      mediaBaseDir: json['_mediaBaseDir'],
     );
   }
 }
