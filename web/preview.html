@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>QP Suite — Mobile Preview</title>
+  <link rel="icon" type="image/png" href="favicon.png"/>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      background: #0a0a0a;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      overflow: hidden;
+    }
+
+    /* ── Subtle grid background ── */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image:
+        radial-gradient(circle at 50% 50%, rgba(59,130,246,0.03) 0%, transparent 70%),
+        linear-gradient(rgba(255,255,255,0.02) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,0.02) 1px, transparent 1px);
+      background-size: 100% 100%, 40px 40px, 40px 40px;
+      z-index: 0;
+    }
+
+    .preview-container {
+      position: relative;
+      z-index: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 20px;
+    }
+
+    /* ── Header bar ── */
+    .header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 20px;
+      background: rgba(255,255,255,0.05);
+      border-radius: 12px;
+      border: 1px solid rgba(255,255,255,0.08);
+    }
+    .header .dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: #22c55e;
+      box-shadow: 0 0 6px #22c55e80;
+      animation: pulse 2s infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+    .header span {
+      color: rgba(255,255,255,0.5);
+      font-size: 12px;
+      font-weight: 500;
+      letter-spacing: 0.5px;
+    }
+    .header .app-name {
+      color: rgba(255,255,255,0.85);
+      font-weight: 600;
+    }
+
+    /* ── Phone device frame ── */
+    .phone {
+      position: relative;
+      width: 393px;
+      height: 852px;
+      border-radius: 50px;
+      background: #1a1a1a;
+      padding: 12px;
+      box-shadow:
+        0 0 0 1px rgba(255,255,255,0.1),
+        0 0 0 2px #0a0a0a,
+        0 0 0 3px rgba(255,255,255,0.05),
+        0 25px 60px rgba(0,0,0,0.6),
+        0 0 120px rgba(59,130,246,0.05);
+    }
+
+    /* Dynamic Island / notch */
+    .phone::before {
+      content: '';
+      position: absolute;
+      top: 16px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 126px;
+      height: 36px;
+      background: #000;
+      border-radius: 20px;
+      z-index: 10;
+      box-shadow: inset 0 0 4px rgba(0,0,0,0.5);
+    }
+
+    /* Camera dot inside Dynamic Island */
+    .phone::after {
+      content: '';
+      position: absolute;
+      top: 26px;
+      left: calc(50% + 36px);
+      width: 12px;
+      height: 12px;
+      background: radial-gradient(circle, #1a2340 30%, #0d1525 60%, #060a12 100%);
+      border-radius: 50%;
+      z-index: 11;
+      box-shadow: 0 0 3px rgba(59,130,246,0.3);
+    }
+
+    /* Screen bezel */
+    .screen {
+      width: 100%;
+      height: 100%;
+      border-radius: 40px;
+      overflow: hidden;
+      background: #000;
+      position: relative;
+    }
+
+    .screen iframe {
+      width: 100%;
+      height: 100%;
+      border: none;
+      background: #fff;
+    }
+
+    /* Side buttons */
+    .btn-power {
+      position: absolute;
+      right: -3px;
+      top: 180px;
+      width: 3px;
+      height: 80px;
+      background: linear-gradient(180deg, #333 0%, #1a1a1a 50%, #333 100%);
+      border-radius: 0 2px 2px 0;
+    }
+    .btn-vol-up {
+      position: absolute;
+      left: -3px;
+      top: 150px;
+      width: 3px;
+      height: 50px;
+      background: linear-gradient(180deg, #333 0%, #1a1a1a 50%, #333 100%);
+      border-radius: 2px 0 0 2px;
+    }
+    .btn-vol-down {
+      position: absolute;
+      left: -3px;
+      top: 210px;
+      width: 3px;
+      height: 50px;
+      background: linear-gradient(180deg, #333 0%, #1a1a1a 50%, #333 100%);
+      border-radius: 2px 0 0 2px;
+    }
+    .btn-silent {
+      position: absolute;
+      left: -3px;
+      top: 115px;
+      width: 3px;
+      height: 24px;
+      background: linear-gradient(180deg, #333 0%, #1a1a1a 50%, #333 100%);
+      border-radius: 2px 0 0 2px;
+    }
+
+    /* Bottom home indicator */
+    .home-indicator {
+      position: absolute;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 140px;
+      height: 5px;
+      background: rgba(255,255,255,0.25);
+      border-radius: 3px;
+      z-index: 10;
+    }
+
+    /* ── Device switcher ── */
+    .device-switcher {
+      display: flex;
+      gap: 8px;
+    }
+    .device-switcher button {
+      padding: 6px 14px;
+      font-size: 11px;
+      font-weight: 500;
+      color: rgba(255,255,255,0.5);
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .device-switcher button:hover {
+      background: rgba(255,255,255,0.08);
+      color: rgba(255,255,255,0.8);
+    }
+    .device-switcher button.active {
+      background: rgba(59,130,246,0.15);
+      border-color: rgba(59,130,246,0.4);
+      color: #60a5fa;
+    }
+
+    /* ── Responsive scaling ── */
+    @media (max-height: 950px) {
+      .phone { transform: scale(0.85); transform-origin: top center; }
+      .preview-container { gap: 10px; }
+    }
+    @media (max-height: 800px) {
+      .phone { transform: scale(0.75); transform-origin: top center; }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="preview-container">
+    <div class="header">
+      <div class="dot"></div>
+      <span class="app-name">QP Suite</span>
+      <span>•</span>
+      <span>Dev Preview</span>
+    </div>
+
+    <div class="phone" id="phone">
+      <div class="btn-power"></div>
+      <div class="btn-vol-up"></div>
+      <div class="btn-vol-down"></div>
+      <div class="btn-silent"></div>
+      <div class="screen">
+        <iframe src="/" id="app-frame" title="QP Suite"></iframe>
+      </div>
+      <div class="home-indicator"></div>
+    </div>
+
+    <div class="device-switcher">
+      <button class="active" onclick="setDevice(393, 852, 50, this)">iPhone 15 Pro</button>
+      <button onclick="setDevice(360, 780, 44, this)">Android</button>
+      <button onclick="setDevice(430, 932, 55, this)">iPhone 15 Pro Max</button>
+      <button onclick="setDevice(768, 1024, 20, this)">iPad Mini</button>
+    </div>
+  </div>
+
+  <script>
+    function setDevice(w, h, radius, btn) {
+      const phone = document.getElementById('phone');
+      phone.style.width = w + 'px';
+      phone.style.height = h + 'px';
+      phone.style.borderRadius = radius + 'px';
+      phone.querySelector('.screen').style.borderRadius = (radius - 10) + 'px';
+
+      document.querySelectorAll('.device-switcher button').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+    }
+  </script>
+</body>
+</html>

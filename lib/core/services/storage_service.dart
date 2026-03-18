@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -18,20 +19,43 @@ class StorageService {
   }
 
   // ── Secure Storage (tokens) ──────────────────────
+  // On web, FlutterSecureStorage does NOT persist across page
+  // refreshes (uses sessionStorage/memory). Fall back to
+  // SharedPreferences (localStorage) on web so the session
+  // survives browser refresh.
   static Future<void> setSecure(String key, String value) async {
-    await _secure.write(key: key, value: value);
+    if (kIsWeb) {
+      await _prefs.setString('_secure_$key', value);
+    } else {
+      await _secure.write(key: key, value: value);
+    }
   }
 
   static Future<String?> getSecure(String key) async {
+    if (kIsWeb) {
+      return _prefs.getString('_secure_$key');
+    }
     return _secure.read(key: key);
   }
 
   static Future<void> deleteSecure(String key) async {
-    await _secure.delete(key: key);
+    if (kIsWeb) {
+      await _prefs.remove('_secure_$key');
+    } else {
+      await _secure.delete(key: key);
+    }
   }
 
   static Future<void> clearSecure() async {
-    await _secure.deleteAll();
+    if (kIsWeb) {
+      // Remove only keys we set with _secure_ prefix
+      final keys = _prefs.getKeys().where((k) => k.startsWith('_secure_'));
+      for (final k in keys) {
+        await _prefs.remove(k);
+      }
+    } else {
+      await _secure.deleteAll();
+    }
   }
 
   // ── Token shortcuts ──────────────────────────────

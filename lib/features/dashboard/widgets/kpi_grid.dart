@@ -44,7 +44,7 @@ class KpiGrid extends StatelessWidget {
           crossAxisCount: 2,
           mainAxisSpacing: 10,
           crossAxisSpacing: 10,
-          childAspectRatio: 1.75,
+          childAspectRatio: 1.5,
         ),
         itemCount: items.length,
         itemBuilder: (context, index) {
@@ -98,17 +98,18 @@ class _KpiCard extends StatelessWidget {
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           Row(
             children: [
-              Icon(icon, size: 18, color: color),
+              Icon(icon, size: 16, color: color),
               const SizedBox(width: 6),
               Expanded(
                 child: Text(
                   label,
                   style: const TextStyle(
-                    fontSize: 12,
+                    fontSize: 11,
                     fontWeight: FontWeight.w500,
                     color: AppColors.textSecondaryLight,
                   ),
@@ -117,32 +118,29 @@ class _KpiCard extends StatelessWidget {
               ),
             ],
           ),
+          const Spacer(),
           Text(
             Formatters.compactNumber(kpi.value),
             style: const TextStyle(
-              fontSize: 24,
+              fontSize: 22,
               fontWeight: FontWeight.bold,
               color: Colors.black,
             ),
           ),
+          const SizedBox(height: 4),
           Row(
             children: [
-              Icon(trendIcon, size: 14, color: trendColor),
+              Icon(trendIcon, size: 12, color: trendColor),
               const SizedBox(width: 3),
-              Text(
-                Formatters.formatPercent(kpi.changePct),
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  color: trendColor,
-                ),
-              ),
-              const SizedBox(width: 4),
-              const Text(
-                'vs last period',
-                style: TextStyle(
-                  fontSize: 10,
-                  color: AppColors.textSecondaryLight,
+              Flexible(
+                child: Text(
+                  '${Formatters.formatPercent(kpi.changePct)} vs last period',
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w500,
+                    color: trendColor,
+                  ),
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
             ],

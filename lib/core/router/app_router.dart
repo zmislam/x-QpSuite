@@ -18,6 +18,7 @@ import '../../features/boost/screens/boosted_posts_screen.dart';
 import '../../features/settings/screens/settings_screen.dart';
 import '../../features/content/screens/schedule_content_screen.dart';
 import '../../features/content/screens/content_calendar_screen.dart';
+import '../../features/content/screens/scheduled_posts_screen.dart';
 import '../../shared/bottom_nav_shell.dart';
 
 final _rootKey = GlobalKey<NavigatorState>();
@@ -88,6 +89,11 @@ GoRouter createRouter(AuthProvider authProvider) {
                     path: 'calendar',
                     builder: (context, state) =>
                         const ContentCalendarScreen(),
+                  ),
+                  GoRoute(
+                    path: 'scheduled-posts',
+                    builder: (context, state) =>
+                        const ScheduledPostsScreen(),
                   ),
                 ],
               ),

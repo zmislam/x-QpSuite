@@ -1,3 +1,5 @@
+import 'dart:async';
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import '../../../core/constants/api_constants.dart';
 import '../../../core/services/api_service.dart';
@@ -32,6 +34,18 @@ class ContentProvider extends ChangeNotifier {
   String _calendarMonth = '';
   bool _isCalendarLoading = false;
 
+  // Scheduled posts dedicated state
+  List<ContentItem> _scheduledItems = [];
+  bool _isScheduledLoading = false;
+  bool _scheduledHasMore = true;
+  int _scheduledPage = 1;
+  String _scheduledStatusFilter = 'all'; // all | Scheduled | Failed | Cancelled
+  int _scheduledTotal = 0;
+  int _scheduledCount = 0;
+  int _failedCount = 0;
+  int _cancelledCount = 0;
+  Timer? _pollTimer;
+
   ContentProvider({required ApiService api}) : _api = api;
 
   List<ContentItem> get items => _items;
@@ -50,6 +64,16 @@ class ContentProvider extends ChangeNotifier {
   List<ContentItem> get photoItems => _photoItems;
   bool get isTypeLoading => _isTypeLoading;
   String get postsFilter => _postsFilter;
+
+  // Scheduled posts getters
+  List<ContentItem> get scheduledItems => _scheduledItems;
+  bool get isScheduledLoading => _isScheduledLoading;
+  bool get scheduledHasMore => _scheduledHasMore;
+  String get scheduledStatusFilter => _scheduledStatusFilter;
+  int get scheduledTotal => _scheduledTotal;
+  int get scheduledCount => _scheduledCount;
+  int get failedCount => _failedCount;
+  int get cancelledCount => _cancelledCount;
 
   void setPostsFilter(String filter) {
     _postsFilter = filter;
@@ -167,14 +191,35 @@ class ContentProvider extends ChangeNotifier {
   }
 
   Future<bool> publishNow(String pageId, String scheduleId) async {
-    try {
-      await _api.post(ApiConstants.scheduledPostPublishNow(pageId, scheduleId));
-      // Refresh content
-      fetchContent(pageId);
-      return true;
-    } catch (_) {
-      return false;
+    // Retry up to 3 times — publish-now can be slow (copies media files)
+    const maxRetries = 3;
+    for (int attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        final res = await _api.post(
+          ApiConstants.scheduledPostPublishNow(pageId, scheduleId),
+          data: {},
+        );
+        if (res.data['success'] == true) {
+          return true;
+        }
+        // If server says "already publishing/published", treat as success
+        if (res.statusCode == 404) return true;
+        return false;
+      } catch (e) {
+        final isRetryable = e is DioException &&
+            (e.type == DioExceptionType.connectionTimeout ||
+             e.type == DioExceptionType.sendTimeout ||
+             e.type == DioExceptionType.receiveTimeout ||
+             e.type == DioExceptionType.connectionError ||
+             (e.response?.statusCode != null && e.response!.statusCode! >= 500));
+        if (!isRetryable || attempt == maxRetries) {
+          debugPrint('[ContentProvider] publishNow failed after $attempt attempts: $e');
+          return false;
+        }
+        await Future.delayed(Duration(seconds: 1 << (attempt - 1)));
+      }
     }
+    return false;
   }
 
   /// Fetch content filtered by type: 'Reel', 'Story', 'Mention', 'Photo'
@@ -220,5 +265,249 @@ class ContentProvider extends ChangeNotifier {
 
     _isTypeLoading = false;
     notifyListeners();
+  }
+
+  // ── Scheduled Posts Management ──────────────────────
+
+  void setScheduledStatusFilter(String filter, String pageId) {
+    if (filter == _scheduledStatusFilter) return;
+    _scheduledStatusFilter = filter;
+    _scheduledItems = [];
+    _scheduledPage = 1;
+    _scheduledHasMore = true;
+    fetchScheduledPosts(pageId);
+  }
+
+  Future<void> fetchScheduledPosts(String pageId,
+      {bool loadMore = false}) async {
+    if (_isScheduledLoading) return;
+    if (loadMore) {
+      if (!_scheduledHasMore) return;
+      _scheduledPage++;
+    } else {
+      _scheduledPage = 1;
+      _scheduledItems = [];
+      _scheduledHasMore = true;
+    }
+
+    _isScheduledLoading = true;
+    notifyListeners();
+
+    try {
+      final params = <String, dynamic>{
+        'page': _scheduledPage,
+        'limit': 20,
+      };
+      if (_scheduledStatusFilter != 'all') {
+        params['status'] = _scheduledStatusFilter;
+      }
+
+      final res = await _api.get(
+        ApiConstants.scheduledPosts(pageId),
+        queryParameters: params,
+      );
+
+      if (res.data['success'] == true) {
+        final list = (res.data['data'] as List?)
+                ?.map((e) => ContentItem.fromJson({...e, '_source': 'scheduled'}))
+                .toList() ??
+            [];
+        if (loadMore) {
+          _scheduledItems.addAll(list);
+        } else {
+          _scheduledItems = list;
+        }
+        _scheduledTotal = res.data['total'] ?? list.length;
+        _scheduledHasMore = list.length >= 20;
+
+        // Parse status counts if available
+        _scheduledCount = res.data['scheduled_count'] ?? 0;
+        _failedCount = res.data['failed_count'] ?? 0;
+        _cancelledCount = res.data['cancelled_count'] ?? 0;
+      }
+    } catch (_) {
+      // silent
+    }
+
+    _isScheduledLoading = false;
+    notifyListeners();
+  }
+
+  Future<bool> updateScheduledContent(
+    String pageId,
+    String scheduleId, {
+    String? text,
+    List<Map<String, String>>? media,
+    DateTime? scheduledFor,
+    String? contentType,
+  }) async {
+    try {
+      final data = <String, dynamic>{};
+      if (text != null) data['text'] = text;
+      if (media != null) data['media'] = media;
+      if (scheduledFor != null) {
+        data['scheduled_for'] = scheduledFor.toUtc().toIso8601String();
+      }
+      if (contentType != null) data['content_type'] = contentType;
+
+      await _api.patch(
+        ApiConstants.scheduledPostById(pageId, scheduleId),
+        data: data,
+      );
+      // Refresh the scheduled list
+      fetchScheduledPosts(pageId);
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<Map<String, dynamic>?> publishStoryNow(
+    String pageId, {
+    required String text,
+    required Map<String, dynamic> storyMeta,
+  }) async {
+    try {
+      final res = await _api.post(
+        ApiConstants.publishStoryNow(pageId),
+        data: {
+          'text': text,
+          'story_meta': storyMeta,
+        },
+      );
+      if (res.data['success'] == true) {
+        fetchContent(pageId);
+        return res.data['data'] as Map<String, dynamic>?;
+      }
+      return null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<List<Map<String, String>>?> uploadMedia(
+    String pageId,
+    FormData formData,
+  ) async {
+    // Retry up to 3 times with exponential backoff
+    const maxRetries = 3;
+    for (int attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        final res = await _api.uploadFile(
+          ApiConstants.contentUploadMedia(pageId),
+          formData: formData,
+        );
+        if (res.data['success'] == true) {
+          return (res.data['data'] as List)
+              .map((m) => {
+                    'url': m['url'] as String,
+                    'type': m['type'] as String,
+                  })
+              .toList();
+        }
+        return null;
+      } catch (e) {
+        final isRetryable = e is DioException &&
+            (e.type == DioExceptionType.connectionTimeout ||
+             e.type == DioExceptionType.sendTimeout ||
+             e.type == DioExceptionType.receiveTimeout ||
+             e.type == DioExceptionType.connectionError ||
+             (e.response?.statusCode != null && e.response!.statusCode! >= 500));
+        if (!isRetryable || attempt == maxRetries) {
+          debugPrint('[ContentProvider] uploadMedia failed after $attempt attempts: $e');
+          return null;
+        }
+        // Exponential backoff: 1s, 2s, 4s
+        await Future.delayed(Duration(seconds: 1 << (attempt - 1)));
+      }
+    }
+    return null;
+  }
+
+  /// Upload media for an already-published post.
+  /// Returns a list of filename strings on success, null on failure.
+  Future<List<String>?> uploadPostMedia(
+    String pageId,
+    FormData formData,
+  ) async {
+    const maxRetries = 3;
+    for (int attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        final res = await _api.uploadFile(
+          ApiConstants.publishedPostUploadMedia(pageId),
+          formData: formData,
+        );
+        if (res.data['success'] == true) {
+          return (res.data['data'] as List)
+              .map((f) => f.toString())
+              .toList();
+        }
+        return null;
+      } catch (e) {
+        final isRetryable = e is DioException &&
+            (e.type == DioExceptionType.connectionTimeout ||
+             e.type == DioExceptionType.sendTimeout ||
+             e.type == DioExceptionType.receiveTimeout ||
+             e.type == DioExceptionType.connectionError ||
+             (e.response?.statusCode != null && e.response!.statusCode! >= 500));
+        if (!isRetryable || attempt == maxRetries) {
+          debugPrint('[ContentProvider] uploadPostMedia failed after $attempt attempts: $e');
+          return null;
+        }
+        await Future.delayed(Duration(seconds: 1 << (attempt - 1)));
+      }
+    }
+    return null;
+  }
+
+  Future<Map<String, dynamic>?> scheduleContent(
+    String pageId, {
+    required Map<String, dynamic> data,
+    bool skipRefresh = false,
+  }) async {
+    try {
+      final res = await _api.post(
+        ApiConstants.contentSchedule(pageId),
+        data: data,
+      );
+      if (res.data['success'] == true) {
+        // Skip background refresh when posting now — publishNow will handle it
+        if (!skipRefresh) {
+          fetchContent(pageId);
+          fetchScheduledPosts(pageId);
+        }
+        return res.data['data'] as Map<String, dynamic>?;
+      }
+      return null;
+    } catch (e) {
+      rethrow;
+    }
+  }
+
+  /// Start auto-polling scheduled posts when items are near-expiry
+  void startPolling(String pageId) {
+    stopPolling();
+    _pollTimer = Timer.periodic(const Duration(seconds: 10), (_) {
+      final hasNearExpiry = _scheduledItems.any((item) {
+        if (item.status == 'Publishing') return true;
+        if (item.scheduledFor == null) return false;
+        final diff = item.scheduledFor!.difference(DateTime.now());
+        return diff.inMinutes <= 2 && diff.inSeconds > 0;
+      });
+      if (hasNearExpiry) {
+        fetchScheduledPosts(pageId);
+      }
+    });
+  }
+
+  void stopPolling() {
+    _pollTimer?.cancel();
+    _pollTimer = null;
+  }
+
+  @override
+  void dispose() {
+    stopPolling();
+    super.dispose();
   }
 }

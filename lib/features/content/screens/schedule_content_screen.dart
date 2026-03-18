@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
@@ -94,30 +95,49 @@ class _ScheduleContentScreenState extends State<ScheduleContentScreen> {
 
     final pageId = context.read<ManagedPagesProvider>().activePageId;
     if (pageId == null) return;
+    final contentProvider = context.read<ContentProvider>();
     final api = context.read<ApiService>();
 
     try {
-      // Upload media first
+      // Upload media first (with retry via ContentProvider)
       List<Map<String, String>> mediaList = [];
       if (_mediaFiles.isNotEmpty) {
         final formData = FormData();
         for (final file in _mediaFiles) {
+          final bytes = await file.readAsBytes();
           formData.files.add(MapEntry(
             'media',
-            await MultipartFile.fromFile(file.path),
+            MultipartFile.fromBytes(bytes, filename: file.name),
           ));
         }
-        final uploadRes = await api.uploadFile(
-          ApiConstants.contentUploadMedia(pageId),
-          formData: formData,
-        );
-        if (uploadRes.data['success'] == true) {
-          mediaList = (uploadRes.data['data'] as List)
-              .map((m) => {
-                    'url': m['url'] as String,
-                    'type': m['type'] as String,
-                  })
-              .toList();
+        var uploaded = await contentProvider.uploadMedia(pageId, formData);
+
+        // If batch failed and multiple files, fall back to individual uploads
+        if (uploaded == null && _mediaFiles.length > 1) {
+          final List<Map<String, String>> individualResults = [];
+          bool allSucceeded = true;
+          for (final file in _mediaFiles) {
+            final singleForm = FormData();
+            final bytes = await file.readAsBytes();
+            singleForm.files.add(MapEntry(
+              'media',
+              MultipartFile.fromBytes(bytes, filename: file.name),
+            ));
+            final singleResult = await contentProvider.uploadMedia(pageId, singleForm);
+            if (singleResult != null) {
+              individualResults.addAll(singleResult);
+            } else {
+              allSucceeded = false;
+              break;
+            }
+          }
+          if (allSucceeded && individualResults.isNotEmpty) {
+            uploaded = individualResults;
+          }
+        }
+
+        if (uploaded != null) {
+          mediaList = uploaded;
         }
       }
 
@@ -224,12 +244,25 @@ class _ScheduleContentScreenState extends State<ScheduleContentScreen> {
                     children: [
                       ClipRRect(
                         borderRadius: BorderRadius.circular(8),
-                        child: Image.file(
-                          File(_mediaFiles[i].path),
-                          width: 80,
-                          height: 80,
-                          fit: BoxFit.cover,
-                        ),
+                        child: kIsWeb
+                            ? Image.network(
+                                _mediaFiles[i].path,
+                                width: 80,
+                                height: 80,
+                                fit: BoxFit.cover,
+                                errorBuilder: (_, __, ___) => Container(
+                                  width: 80,
+                                  height: 80,
+                                  color: Colors.grey[200],
+                                  child: const Icon(Icons.image),
+                                ),
+                              )
+                            : Image.file(
+                                File(_mediaFiles[i].path),
+                                width: 80,
+                                height: 80,
+                                fit: BoxFit.cover,
+                              ),
                       ),
                       Positioned(
                         top: 2,

@@ -2,7 +2,7 @@ class ApiConstants {
   /// Override at build time: --dart-define=API_BASE_URL=https://api.example.com/api
   static const String baseUrl = String.fromEnvironment(
     'API_BASE_URL',
-    defaultValue: 'https://qposs.com:82/api',
+    defaultValue: 'http://217.73.238.134:9006/api',
   );
 
   /// Server origin (e.g. http://192.168.0.102:9000)
@@ -177,6 +177,8 @@ class ApiConstants {
       '/business-suite/$pageId/inbox/$threadId/reply';
   static String inboxThreadRead(String pageId, String threadId) =>
       '/business-suite/$pageId/inbox/$threadId/read';
+  static String publishStoryNow(String pageId) =>
+      '/business-suite/$pageId/story/publish-now';
   static String onboarding(String pageId) =>
       '/business-suite/$pageId/onboarding';
 

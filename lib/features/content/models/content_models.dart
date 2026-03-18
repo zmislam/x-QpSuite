@@ -1,3 +1,44 @@
+/// Story styling metadata for text-only stories.
+class StoryMeta {
+  final String? color;
+  final String? textColor;
+  final String? fontFamily;
+  final double? fontSize;
+  final String? textAlignment;
+  final String? bgImageId;
+
+  StoryMeta({
+    this.color,
+    this.textColor,
+    this.fontFamily,
+    this.fontSize,
+    this.textAlignment,
+    this.bgImageId,
+  });
+
+  factory StoryMeta.fromJson(Map<String, dynamic> json) {
+    return StoryMeta(
+      color: json['color'],
+      textColor: json['text_color'],
+      fontFamily: json['font_family'],
+      fontSize: (json['font_size'] as num?)?.toDouble(),
+      textAlignment: json['text_alignment'],
+      bgImageId: json['bg_image_id']?.toString(),
+    );
+  }
+
+  Map<String, dynamic> toMap() {
+    return {
+      if (color != null) 'color': color,
+      if (textColor != null) 'text_color': textColor,
+      if (fontFamily != null) 'font_family': fontFamily,
+      if (fontSize != null) 'font_size': fontSize,
+      if (textAlignment != null) 'text_alignment': textAlignment,
+      if (bgImageId != null) 'bg_image_id': bgImageId,
+    };
+  }
+}
+
 class ContentItem {
   final String id;
   final String source; // "published" | "scheduled"
@@ -17,6 +58,7 @@ class ContentItem {
   final bool isBoosted;
   final String? authorName;
   final String? authorPic;
+  final StoryMeta? storyMeta;
 
   ContentItem({
     required this.id,
@@ -37,11 +79,14 @@ class ContentItem {
     this.isBoosted = false,
     this.authorName,
     this.authorPic,
+    this.storyMeta,
   });
 
   bool get isPublished => source == 'published';
   bool get isScheduled => source == 'scheduled';
   bool get isFailed => status == 'Failed';
+  bool get isCancelled => status == 'Cancelled';
+  bool get isPublishing => status == 'Publishing';
   String get displayText => description ?? text ?? '';
 
   factory ContentItem.fromJson(Map<String, dynamic> json) {
@@ -61,6 +106,12 @@ class ContentItem {
       final u = json['user_id'] as Map<String, dynamic>;
       authorName = '${u['first_name'] ?? ''} ${u['last_name'] ?? ''}'.trim();
       authorPic = u['profile_pic'];
+    }
+    // Story meta
+    StoryMeta? storyMeta;
+    if (json['story_meta'] is Map) {
+      storyMeta =
+          StoryMeta.fromJson(json['story_meta'] as Map<String, dynamic>);
     }
 
     return ContentItem(
@@ -84,6 +135,7 @@ class ContentItem {
       isBoosted: json['is_boosted'] ?? false,
       authorName: authorName,
       authorPic: authorPic,
+      storyMeta: storyMeta,
     );
   }
 }

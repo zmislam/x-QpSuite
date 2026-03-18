@@ -17,6 +17,7 @@ import '../widgets/reels_tab.dart';
 import '../widgets/stories_tab.dart';
 import '../widgets/mentions_tab.dart';
 import '../widgets/photos_tab.dart';
+import '../widgets/schedule_post_modal.dart';
 
 class ContentScreen extends StatefulWidget {
   const ContentScreen({super.key});
@@ -92,7 +93,16 @@ class _ContentScreenState extends State<ContentScreen>
                   ),
                   const Spacer(),
                   FilledButton.icon(
-                    onPressed: () => context.push('/create-post'),
+                    onPressed: () async {
+                      final posted = await SchedulePostModal.show(context);
+                      // Safety net: refresh posts again after modal closes
+                      if (mounted && posted == true) {
+                        final pid = context.read<ManagedPagesProvider>().activePageId;
+                        if (pid != null) {
+                          context.read<PostProvider>().fetchPagePosts(pid, refresh: true);
+                        }
+                      }
+                    },
                     icon: const Icon(Icons.add, size: 18),
                     label: const Text('Create'),
                     style: FilledButton.styleFrom(

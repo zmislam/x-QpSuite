@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import '../../../core/constants/api_constants.dart';
 import '../../../core/services/api_service.dart';
 import '../models/comment_model.dart';
+import '../models/media_model.dart';
 import '../models/post_model.dart';
 import '../models/post_utils.dart';
 
@@ -161,6 +162,71 @@ class PostProvider extends ChangeNotifier {
     _isLoading = false;
     _isLoadingMore = false;
     notifyListeners();
+  }
+
+  // ═══════════════════════════════════════════════════
+  // DELETE PUBLISHED POST
+  // ═══════════════════════════════════════════════════
+
+  Future<bool> deletePost(String pageId, String postId) async {
+    try {
+      await api.delete(ApiConstants.publishedPostById(pageId, postId));
+      _posts.removeWhere((p) => p.id == postId);
+      notifyListeners();
+      return true;
+    } catch (e) {
+      debugPrint('Error deleting post: $e');
+      return false;
+    }
+  }
+
+  // ═══════════════════════════════════════════════════
+  // EDIT PUBLISHED POST (description)
+  // ═══════════════════════════════════════════════════
+
+  Future<bool> editPost(String pageId, String postId, {
+    String? description,
+    List<String>? addMedia,
+    List<String>? removeMediaIds,
+  }) async {
+    try {
+      final data = <String, dynamic>{};
+      if (description != null) data['description'] = description;
+      if (addMedia != null && addMedia.isNotEmpty) data['addMedia'] = addMedia;
+      if (removeMediaIds != null && removeMediaIds.isNotEmpty) {
+        data['removeMediaIds'] = removeMediaIds;
+      }
+
+      final res = await api.patch(
+        ApiConstants.publishedPostById(pageId, postId),
+        data: data,
+      );
+
+      // Update local state from API response
+      final index = _posts.indexWhere((p) => p.id == postId);
+      if (index != -1) {
+        final resData = res.data['data'];
+        if (resData != null && resData is Map<String, dynamic>) {
+          if (description != null) {
+            _posts[index].description = description;
+          }
+          // Refresh media list from response
+          if (resData['media'] != null) {
+            _posts[index].media = List<MediaModel>.from(
+              (resData['media'] as List).map((x) => MediaModel.fromMap(x)),
+            );
+          }
+        } else if (description != null) {
+          _posts[index].description = description;
+        }
+        notifyListeners();
+      }
+
+      return true;
+    } catch (e) {
+      debugPrint('Error editing post: $e');
+      return false;
+    }
   }
 
   // ═══════════════════════════════════════════════════
