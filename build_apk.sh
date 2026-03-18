@@ -51,8 +51,11 @@ install_java() {
   fi
 
   log_warn "Java JDK ${JAVA_VERSION} not found. Installing..."
-  sudo apt-get update -qq
-  sudo apt-get install -y -qq openjdk-${JAVA_VERSION}-jdk-headless >/dev/null 2>&1
+  # Clean stale apt cache to avoid hash mismatch errors
+  sudo rm -rf /var/lib/apt/lists/*
+  sudo apt-get clean
+  sudo apt-get update
+  sudo apt-get install -y openjdk-${JAVA_VERSION}-jdk-headless
   
   # Set JAVA_HOME
   export JAVA_HOME="/usr/lib/jvm/java-${JAVA_VERSION}-openjdk-amd64"
