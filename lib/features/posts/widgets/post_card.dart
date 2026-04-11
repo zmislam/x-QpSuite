@@ -4,6 +4,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 
 import '../../../core/constants/api_constants.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../content/widgets/media_viewer_modal.dart';
 import '../models/media_model.dart';
 import '../models/post_assets.dart';
 import '../models/post_model.dart';
@@ -349,13 +350,35 @@ class _PostBodyState extends State<_PostBody> {
     return ApiConstants.postMediaUrl(m.media);
   }
 
+  /// Converts MediaModel list to ViewableMedia list for the modal viewer.
+  List<ViewableMedia> _toViewableMedia() {
+    return widget.model.media!
+        .map((m) => ViewableMedia(
+              url: m.media ?? '',
+              type: m.isVideo ? 'video' : 'image',
+              thumbnailUrl: m.videoThumbnail,
+            ))
+        .toList();
+  }
+
+  void _openMediaViewer(BuildContext context, int index) {
+    MediaViewerModal.show(
+      context,
+      mediaList: _toViewableMedia(),
+      initialIndex: index,
+    );
+  }
+
   Widget _buildMedia() {
     final mediaList = widget.model.media!;
     final count = mediaList.length;
 
     if (count == 1) {
       final url = _mediaDisplayUrl(mediaList[0]);
-      return _mediaImage(url);
+      return GestureDetector(
+        onTap: () => _openMediaViewer(context, 0),
+        child: _mediaImage(url, isVideo: mediaList[0].isVideo),
+      );
     }
 
     // Multi-media grid
@@ -363,14 +386,20 @@ class _PostBodyState extends State<_PostBody> {
       return Row(
         children: [
           Expanded(
-              child: _mediaImage(
-                  _mediaDisplayUrl(mediaList[0]),
-                  height: 250)),
+              child: GestureDetector(
+                  onTap: () => _openMediaViewer(context, 0),
+                  child: _mediaImage(
+                      _mediaDisplayUrl(mediaList[0]),
+                      height: 250,
+                      isVideo: mediaList[0].isVideo))),
           const SizedBox(width: 2),
           Expanded(
-              child: _mediaImage(
-                  _mediaDisplayUrl(mediaList[1]),
-                  height: 250)),
+              child: GestureDetector(
+                  onTap: () => _openMediaViewer(context, 1),
+                  child: _mediaImage(
+                      _mediaDisplayUrl(mediaList[1]),
+                      height: 250,
+                      isVideo: mediaList[1].isVideo))),
         ],
       );
     }
@@ -378,34 +407,42 @@ class _PostBodyState extends State<_PostBody> {
     // 3+ images: first image full width, rest in a row
     return Column(
       children: [
-        _mediaImage(_mediaDisplayUrl(mediaList[0])),
+        GestureDetector(
+          onTap: () => _openMediaViewer(context, 0),
+          child: _mediaImage(_mediaDisplayUrl(mediaList[0]),
+              isVideo: mediaList[0].isVideo),
+        ),
         const SizedBox(height: 2),
         Row(
           children: [
             for (int i = 1; i < (count > 4 ? 4 : count); i++) ...[
               if (i > 1) const SizedBox(width: 2),
               Expanded(
-                child: Stack(
-                  children: [
-                    _mediaImage(
-                        _mediaDisplayUrl(mediaList[i]),
-                        height: 150),
-                    if (i == 3 && count > 4)
-                      Positioned.fill(
-                        child: Container(
-                          color: Colors.black45,
-                          alignment: Alignment.center,
-                          child: Text(
-                            '+${count - 4}',
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 24,
-                              fontWeight: FontWeight.bold,
+                child: GestureDetector(
+                  onTap: () => _openMediaViewer(context, i),
+                  child: Stack(
+                    children: [
+                      _mediaImage(
+                          _mediaDisplayUrl(mediaList[i]),
+                          height: 150,
+                          isVideo: mediaList[i].isVideo),
+                      if (i == 3 && count > 4)
+                        Positioned.fill(
+                          child: Container(
+                            color: Colors.black45,
+                            alignment: Alignment.center,
+                            child: Text(
+                              '+${count - 4}',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 24,
+                                fontWeight: FontWeight.bold,
+                              ),
                             ),
                           ),
                         ),
-                      ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
             ],
@@ -415,7 +452,7 @@ class _PostBodyState extends State<_PostBody> {
     );
   }
 
-  Widget _mediaImage(String url, {double? height}) {
+  Widget _mediaImage(String url, {double? height, bool isVideo = false}) {
     if (url.isEmpty) {
       return Container(
         height: height ?? 280,
@@ -425,22 +462,45 @@ class _PostBodyState extends State<_PostBody> {
       );
     }
 
-    return CachedNetworkImage(
-      imageUrl: url,
-      width: double.infinity,
-      height: height ?? 280,
-      fit: BoxFit.cover,
-      placeholder: (_, __) => Container(
-        height: height ?? 280,
-        color: AppColors.surfaceLight,
-        child: const Center(child: CircularProgressIndicator(strokeWidth: 2)),
-      ),
-      errorWidget: (_, __, ___) => Container(
-        height: height ?? 280,
-        color: AppColors.surfaceLight,
-        child:
-            const Center(child: Icon(Icons.image, size: 48, color: Colors.grey)),
-      ),
+    return Stack(
+      children: [
+        CachedNetworkImage(
+          imageUrl: url,
+          width: double.infinity,
+          height: height ?? 280,
+          fit: BoxFit.cover,
+          placeholder: (_, __) => Container(
+            height: height ?? 280,
+            color: AppColors.surfaceLight,
+            child: const Center(child: CircularProgressIndicator(strokeWidth: 2)),
+          ),
+          errorWidget: (_, __, ___) => Container(
+            height: height ?? 280,
+            color: AppColors.surfaceLight,
+            child:
+                const Center(child: Icon(Icons.image, size: 48, color: Colors.grey)),
+          ),
+        ),
+        // Video play icon overlay
+        if (isVideo)
+          Positioned.fill(
+            child: Center(
+              child: Container(
+                width: 48,
+                height: 48,
+                decoration: const BoxDecoration(
+                  color: Colors.black54,
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.play_arrow,
+                  color: Colors.white,
+                  size: 30,
+                ),
+              ),
+            ),
+          ),
+      ],
     );
   }
 }

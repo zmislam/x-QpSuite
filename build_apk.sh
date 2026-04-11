@@ -34,6 +34,18 @@ log_success() { echo -e "${GREEN}✓ ${NC}$1"; }
 log_warn()    { echo -e "${YELLOW}⚠ ${NC}$1"; }
 log_error()   { echo -e "${RED}✗ ${NC}$1"; }
 
+# Download files using Python (curl/wget get killed on some servers)
+download_file() {
+  local url="$1"
+  local dest="$2"
+  python3 -c "
+import urllib.request, sys
+print(f'Downloading to {sys.argv[2]}...')
+urllib.request.urlretrieve(sys.argv[1], sys.argv[2])
+print('Download complete.')
+" "$url" "$dest"
+}
+
 print_banner() {
   echo ""
   echo -e "${CYAN}╔══════════════════════════════════════════════╗${NC}"
@@ -51,11 +63,29 @@ install_java() {
   fi
 
   log_warn "Java JDK ${JAVA_VERSION} not found. Installing..."
+
+  # Temporarily disable problematic Microsoft repos that block apt-get update
+  # (duplicate entries + missing GPG key — not needed for Java install)
+  for f in /etc/apt/sources.list.d/archive_uri-https_packages_microsoft_com_ubuntu_22_04_prod-noble.list \
+           /etc/apt/sources.list.d/msprod.list \
+           /etc/apt/sources.list.d/mssql-release.list; do
+    if [[ -f "$f" ]]; then
+      sudo mv "$f" "${f}.disabled" 2>/dev/null || true
+    fi
+  done
+
   # Clean stale apt cache to avoid hash mismatch errors
   sudo rm -rf /var/lib/apt/lists/*
   sudo apt-get clean
   sudo apt-get update
   sudo apt-get install -y openjdk-${JAVA_VERSION}-jdk-headless
+
+  # Re-enable Microsoft repos
+  for f in /etc/apt/sources.list.d/*.disabled; do
+    if [[ -f "$f" ]]; then
+      sudo mv "$f" "${f%.disabled}" 2>/dev/null || true
+    fi
+  done
   
   # Set JAVA_HOME
   export JAVA_HOME="/usr/lib/jvm/java-${JAVA_VERSION}-openjdk-amd64"
@@ -79,11 +109,11 @@ install_android_sdk() {
   log_warn "Android SDK not found. Installing to ${ANDROID_SDK_DIR}..."
   mkdir -p "${ANDROID_SDK_DIR}/cmdline-tools"
 
-  # Download command-line tools
+  # Download command-line tools using Python (curl/wget get killed on this server)
   local tmp_zip="/tmp/android-cmdtools.zip"
   if [[ ! -f "$tmp_zip" ]]; then
     log_info "Downloading Android command-line tools..."
-    curl -sL "$CMDLINE_TOOLS_URL" -o "$tmp_zip"
+    download_file "$CMDLINE_TOOLS_URL" "$tmp_zip"
   fi
 
   # Extract and organize
@@ -277,6 +307,18 @@ main() {
 
   # Step 5: Build the APK
   build_apk "$cmd"
+
+  # Step 6: Kill Gradle daemon & Java processes to free memory
+  # These linger after builds and consume ~3-4GB RAM for no reason
+  log_info "Stopping Gradle daemon to free resources..."
+  if [[ -f "$APP_DIR/android/gradlew" ]]; then
+    cd "$APP_DIR/android" && ./gradlew --stop 2>/dev/null || true
+    cd "$APP_DIR"
+  fi
+  # Kill any remaining Gradle/Java build processes
+  pkill -f "GradleDaemon" 2>/dev/null || true
+  pkill -f "kotlin-daemon" 2>/dev/null || true
+  log_success "Build processes cleaned up. Server resources freed."
 }
 
 main "$@"

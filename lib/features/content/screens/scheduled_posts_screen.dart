@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import '../../../core/constants/api_constants.dart';
-import '../../../core/theme/app_colors.dart';
 import '../../../features/page_switcher/models/managed_page_model.dart';
 import '../../../features/page_switcher/providers/managed_pages_provider.dart';
 import '../../../shared/widgets/empty_state.dart';
@@ -11,6 +10,8 @@ import '../models/content_models.dart';
 import '../providers/content_provider.dart';
 import '../widgets/countdown_timer.dart';
 import '../widgets/edit_scheduled_modal.dart';
+import '../widgets/media_viewer_modal.dart';
+import '../widgets/network_video_preview.dart';
 import '../widgets/schedule_post_modal.dart';
 
 /// Dedicated screen for managing scheduled posts with live countdown
@@ -58,7 +59,9 @@ class _ScheduledPostsScreenState extends State<ScheduledPostsScreen> {
     }
 
     final cp = context.watch<ContentProvider>();
-    final ManagedPageModel? page = context.watch<ManagedPagesProvider>().activePage;
+    final ManagedPageModel? page = context
+        .watch<ManagedPagesProvider>()
+        .activePage;
 
     return Scaffold(
       backgroundColor: Colors.grey[50],
@@ -87,16 +90,17 @@ class _ScheduledPostsScreenState extends State<ScheduledPostsScreen> {
           ),
 
           // ── Content list ──
-          Expanded(
-            child: _buildList(cp, currentPageId, page),
-          ),
+          Expanded(child: _buildList(cp, currentPageId, page)),
         ],
       ),
     );
   }
 
   Widget _buildList(
-      ContentProvider cp, String? pageId, ManagedPageModel? page) {
+    ContentProvider cp,
+    String? pageId,
+    ManagedPageModel? page,
+  ) {
     if (cp.isScheduledLoading && cp.scheduledItems.isEmpty) {
       return const Padding(
         padding: EdgeInsets.all(16),
@@ -136,11 +140,10 @@ class _ScheduledPostsScreenState extends State<ScheduledPostsScreen> {
             return _ScheduledPostCard(
               item: cp.scheduledItems[index],
               pageName: page?.pageName ?? '',
-              pageAvatar: page?.profilePic as String?,
+              pageAvatar: page?.profilePic,
               onPublishNow: () => _publishNow(pageId, cp.scheduledItems[index]),
               onEdit: () => _editItem(cp.scheduledItems[index]),
-              onDelete: () =>
-                  _deleteItem(pageId, cp.scheduledItems[index]),
+              onDelete: () => _deleteItem(pageId, cp.scheduledItems[index]),
             );
           },
         ),
@@ -172,8 +175,11 @@ class _ScheduledPostsScreenState extends State<ScheduledPostsScreen> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        icon: Icon(Icons.warning_amber_rounded,
-            color: Colors.red[400], size: 36),
+        icon: Icon(
+          Icons.warning_amber_rounded,
+          color: Colors.red[400],
+          size: 36,
+        ),
         title: const Text('Delete Scheduled Post?'),
         content: const Text(
           'This action cannot be undone. The scheduled post will be permanently cancelled.',
@@ -185,9 +191,7 @@ class _ScheduledPostsScreenState extends State<ScheduledPostsScreen> {
           ),
           FilledButton(
             onPressed: () => Navigator.pop(ctx, true),
-            style: FilledButton.styleFrom(
-              backgroundColor: Colors.red,
-            ),
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
             child: const Text('Delete'),
           ),
         ],
@@ -236,12 +240,17 @@ class _StatusFilters extends StatelessWidget {
         child: Row(
           children: [
             _chip('all', 'All', null),
-            _chip('Scheduled', 'Scheduled',
-                scheduledCount > 0 ? scheduledCount : null),
-            _chip('Failed', 'Failed',
-                failedCount > 0 ? failedCount : null),
-            _chip('Cancelled', 'Cancelled',
-                cancelledCount > 0 ? cancelledCount : null),
+            _chip(
+              'Scheduled',
+              'Scheduled',
+              scheduledCount > 0 ? scheduledCount : null,
+            ),
+            _chip('Failed', 'Failed', failedCount > 0 ? failedCount : null),
+            _chip(
+              'Cancelled',
+              'Cancelled',
+              cancelledCount > 0 ? cancelledCount : null,
+            ),
           ],
         ),
       ),
@@ -250,8 +259,7 @@ class _StatusFilters extends StatelessWidget {
 
   Widget _chip(String value, String label, int? count) {
     final isActive = current == value;
-    final displayLabel =
-        count != null ? '$label ($count)' : label;
+    final displayLabel = count != null ? '$label ($count)' : label;
     return Padding(
       padding: const EdgeInsets.only(right: 8),
       child: GestureDetector(
@@ -262,8 +270,7 @@ class _StatusFilters extends StatelessWidget {
             color: isActive ? const Color(0xFF307777) : Colors.grey[100],
             borderRadius: BorderRadius.circular(20),
             border: Border.all(
-              color:
-                  isActive ? const Color(0xFF307777) : Colors.grey[300]!,
+              color: isActive ? const Color(0xFF307777) : Colors.grey[300]!,
             ),
           ),
           child: Text(
@@ -314,8 +321,7 @@ class _ScheduledPostCard extends StatelessWidget {
                 CircleAvatar(
                   radius: 18,
                   backgroundImage: pageAvatar != null
-                      ? NetworkImage(
-                          ApiConstants.pageProfileUrl(pageAvatar!))
+                      ? NetworkImage(ApiConstants.pageProfileUrl(pageAvatar!))
                       : null,
                   child: pageAvatar == null
                       ? const Icon(Icons.store, size: 16)
@@ -351,8 +357,9 @@ class _ScheduledPostCard extends StatelessWidget {
             // Scheduled date
             if (item.scheduledFor != null)
               Text(
-                DateFormat('EEE, MMM d, yyyy · h:mm a')
-                    .format(item.scheduledFor!.toLocal()),
+                DateFormat(
+                  'EEE, MMM d, yyyy · h:mm a',
+                ).format(item.scheduledFor!.toLocal()),
                 style: TextStyle(fontSize: 12, color: Colors.grey[600]),
               ),
 
@@ -378,14 +385,12 @@ class _ScheduledPostCard extends StatelessWidget {
                 ),
                 child: Row(
                   children: [
-                    Icon(Icons.error_outline,
-                        size: 14, color: Colors.red[700]),
+                    Icon(Icons.error_outline, size: 14, color: Colors.red[700]),
                     const SizedBox(width: 6),
                     Expanded(
                       child: Text(
                         item.failureReason!,
-                        style: TextStyle(
-                            fontSize: 12, color: Colors.red[700]),
+                        style: TextStyle(fontSize: 12, color: Colors.red[700]),
                       ),
                     ),
                   ],
@@ -407,14 +412,13 @@ class _ScheduledPostCard extends StatelessWidget {
             // Media grid
             if (item.media.isNotEmpty) ...[
               const SizedBox(height: 10),
-              _MediaGrid(media: item.media),
+              _MediaGrid(media: item.media, isScheduled: item.isScheduled),
             ],
 
             const SizedBox(height: 12),
 
             // Action buttons
-            if (item.status == 'Scheduled' ||
-                item.status == 'Failed') ...[
+            if (item.status == 'Scheduled' || item.status == 'Failed') ...[
               const Divider(height: 1),
               const SizedBox(height: 8),
               Row(
@@ -533,7 +537,8 @@ class _ContentTypeChip extends StatelessWidget {
 // ─── Media Grid ───────────────────────────────────
 class _MediaGrid extends StatelessWidget {
   final List<ContentMedia> media;
-  const _MediaGrid({required this.media});
+  final bool isScheduled;
+  const _MediaGrid({required this.media, this.isScheduled = false});
 
   @override
   Widget build(BuildContext context) {
@@ -541,9 +546,12 @@ class _MediaGrid extends StatelessWidget {
     final extra = media.length - 4;
 
     if (items.length == 1) {
-      return ClipRRect(
-        borderRadius: BorderRadius.circular(8),
-        child: _mediaImage(items[0], height: 180),
+      return GestureDetector(
+        onTap: () => _openViewer(context, 0),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(8),
+          child: _mediaItem(items[0], height: 180),
+        ),
       );
     }
 
@@ -557,30 +565,33 @@ class _MediaGrid extends StatelessWidget {
           return Expanded(
             child: Padding(
               padding: EdgeInsets.only(left: i > 0 ? 4 : 0),
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(8),
-                    child: _mediaImage(m),
-                  ),
-                  if (isLast)
+              child: GestureDetector(
+                onTap: () => _openViewer(context, i),
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
                     ClipRRect(
                       borderRadius: BorderRadius.circular(8),
-                      child: Container(
-                        color: Colors.black54,
-                        alignment: Alignment.center,
-                        child: Text(
-                          '+$extra',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 20,
+                      child: _mediaItem(m),
+                    ),
+                    if (isLast)
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(8),
+                        child: Container(
+                          color: Colors.black54,
+                          alignment: Alignment.center,
+                          child: Text(
+                            '+$extra',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 20,
+                            ),
                           ),
                         ),
                       ),
-                    ),
-                ],
+                  ],
+                ),
               ),
             ),
           );
@@ -589,30 +600,85 @@ class _MediaGrid extends StatelessWidget {
     );
   }
 
-  Widget _mediaImage(ContentMedia m, {double? height}) {
-    final url = ApiConstants.contentMediaDisplayUrl(
+  void _openViewer(BuildContext context, int index) {
+    MediaViewerModal.show(
+      context,
+      mediaList: media
+          .map(
+            (m) => ViewableMedia(
+              url: m.url,
+              type: m.type,
+              thumbnailUrl: m.thumbnailUrl,
+              mediaBaseDir: m.mediaBaseDir,
+              isScheduled: isScheduled,
+            ),
+          )
+          .toList(),
+      initialIndex: index,
+    );
+  }
+
+  Widget _mediaItem(ContentMedia m, {double? height}) {
+    final displayUrl = ApiConstants.contentMediaDisplayUrl(
       url: m.url,
       thumbnailUrl: m.thumbnailUrl,
       type: m.type,
       mediaBaseDir: m.mediaBaseDir,
+      isScheduled: isScheduled,
     );
-    if (url.isEmpty) {
-      return Container(
-        height: height,
-        color: Colors.grey[200],
-        child: const Icon(Icons.image, color: Colors.grey),
-      );
-    }
-    return Image.network(
-      url,
-      height: height,
-      width: double.infinity,
-      fit: BoxFit.cover,
-      errorBuilder: (_, __, ___) => Container(
-        height: height,
-        color: Colors.grey[200],
-        child: const Icon(Icons.broken_image, color: Colors.grey),
-      ),
+    final fullUrl = ApiConstants.contentMediaFullUrl(
+      url: m.url,
+      mediaBaseDir: m.mediaBaseDir,
+      isScheduled: isScheduled,
+    );
+
+    return Stack(
+      fit: height != null ? StackFit.loose : StackFit.expand,
+      children: [
+        if (displayUrl.isNotEmpty)
+          Image.network(
+            displayUrl,
+            height: height,
+            width: double.infinity,
+            fit: BoxFit.cover,
+            errorBuilder: (_, error, stackTrace) => Container(
+              child: m.isVideo && fullUrl.isNotEmpty
+                  ? NetworkVideoPreview(url: fullUrl, height: height)
+                  : Container(
+                      height: height,
+                      color: Colors.grey[200],
+                      child: const Icon(Icons.broken_image, color: Colors.grey),
+                    ),
+            ),
+          )
+        else if (m.isVideo && fullUrl.isNotEmpty)
+          NetworkVideoPreview(url: fullUrl, height: height)
+        else
+          Container(
+            height: height,
+            color: Colors.grey[200],
+            child: const Icon(Icons.image, color: Colors.grey),
+          ),
+        // Video play icon overlay
+        if (m.isVideo)
+          Positioned.fill(
+            child: Center(
+              child: Container(
+                width: 36,
+                height: 36,
+                decoration: const BoxDecoration(
+                  color: Colors.black54,
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.play_arrow,
+                  color: Colors.white,
+                  size: 22,
+                ),
+              ),
+            ),
+          ),
+      ],
     );
   }
 }

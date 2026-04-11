@@ -75,11 +75,11 @@
     /* ── Phone device frame ── */
     .phone {
       position: relative;
-      width: 393px;
-      height: 852px;
-      border-radius: 50px;
+      width: 390px;
+      height: 780px;
+      border-radius: 12px;
       background: #1a1a1a;
-      padding: 12px;
+      padding: 60px 15px 80px;
       box-shadow:
         0 0 0 1px rgba(255,255,255,0.1),
         0 0 0 2px #0a0a0a,
@@ -88,29 +88,28 @@
         0 0 120px rgba(59,130,246,0.05);
     }
 
-    /* Dynamic Island / notch */
+    /* Samsung S7 — front earpiece (top bezel) */
     .phone::before {
       content: '';
       position: absolute;
-      top: 16px;
+      top: 22px;
       left: 50%;
       transform: translateX(-50%);
-      width: 126px;
-      height: 36px;
-      background: #000;
-      border-radius: 20px;
+      width: 56px;
+      height: 6px;
+      background: #111;
+      border-radius: 3px;
       z-index: 10;
-      box-shadow: inset 0 0 4px rgba(0,0,0,0.5);
     }
 
-    /* Camera dot inside Dynamic Island */
+    /* Samsung S7 — front camera dot (top bezel) */
     .phone::after {
       content: '';
       position: absolute;
-      top: 26px;
-      left: calc(50% + 36px);
-      width: 12px;
-      height: 12px;
+      top: 19px;
+      left: calc(50% + 44px);
+      width: 10px;
+      height: 10px;
       background: radial-gradient(circle, #1a2340 30%, #0d1525 60%, #060a12 100%);
       border-radius: 50%;
       z-index: 11;
@@ -121,7 +120,7 @@
     .screen {
       width: 100%;
       height: 100%;
-      border-radius: 40px;
+      border-radius: 4px;
       overflow: hidden;
       background: #000;
       position: relative;
@@ -138,50 +137,46 @@
     .btn-power {
       position: absolute;
       right: -3px;
-      top: 180px;
+      top: 200px;
       width: 3px;
-      height: 80px;
+      height: 60px;
       background: linear-gradient(180deg, #333 0%, #1a1a1a 50%, #333 100%);
       border-radius: 0 2px 2px 0;
     }
     .btn-vol-up {
       position: absolute;
       left: -3px;
-      top: 150px;
+      top: 170px;
       width: 3px;
-      height: 50px;
+      height: 55px;
       background: linear-gradient(180deg, #333 0%, #1a1a1a 50%, #333 100%);
       border-radius: 2px 0 0 2px;
     }
     .btn-vol-down {
       position: absolute;
       left: -3px;
-      top: 210px;
+      top: 235px;
       width: 3px;
-      height: 50px;
+      height: 55px;
       background: linear-gradient(180deg, #333 0%, #1a1a1a 50%, #333 100%);
       border-radius: 2px 0 0 2px;
     }
+    /* Bixby button (Samsung S7) */
     .btn-silent {
-      position: absolute;
-      left: -3px;
-      top: 115px;
-      width: 3px;
-      height: 24px;
-      background: linear-gradient(180deg, #333 0%, #1a1a1a 50%, #333 100%);
-      border-radius: 2px 0 0 2px;
+      display: none;
     }
 
-    /* Bottom home indicator */
+    /* Samsung S7 — physical home button (bottom bezel) */
     .home-indicator {
       position: absolute;
-      bottom: 20px;
+      bottom: 18px;
       left: 50%;
       transform: translateX(-50%);
-      width: 140px;
-      height: 5px;
-      background: rgba(255,255,255,0.25);
-      border-radius: 3px;
+      width: 52px;
+      height: 52px;
+      border: 2px solid #333;
+      border-radius: 50%;
+      background: transparent;
       z-index: 10;
     }
 
@@ -219,6 +214,132 @@
     @media (max-height: 800px) {
       .phone { transform: scale(0.75); transform-origin: top center; }
     }
+
+    /* ── Runtime debugger panel ── */
+    .debug-panel {
+      position: fixed;
+      left: 12px;
+      bottom: 12px;
+      width: min(92vw, 340px);
+      background: rgba(4, 10, 24, 0.9);
+      border: 1px solid rgba(96, 165, 250, 0.45);
+      border-radius: 12px;
+      color: #e5e7eb;
+      z-index: 9999;
+      backdrop-filter: blur(8px);
+      box-shadow: 0 10px 35px rgba(0, 0, 0, 0.35);
+      font-size: 11px;
+    }
+    .debug-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 10px 12px 8px;
+      border-bottom: 1px solid rgba(148, 163, 184, 0.2);
+    }
+    .debug-title {
+      color: #93c5fd;
+      font-size: 12px;
+      font-weight: 600;
+    }
+    .debug-summary {
+      color: #cbd5e1;
+      margin-top: 2px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 250px;
+    }
+    .debug-toggle {
+      min-width: 24px;
+      height: 24px;
+      border: 1px solid rgba(148, 163, 184, 0.5);
+      border-radius: 6px;
+      background: rgba(30, 41, 59, 0.65);
+      color: #f8fafc;
+      cursor: pointer;
+    }
+    .debug-content {
+      padding: 8px 12px 10px;
+    }
+    .debug-panel.collapsed .debug-content {
+      display: none;
+    }
+    .debug-grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 6px;
+    }
+    .debug-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+      color: #dbeafe;
+    }
+    .dbg-pill {
+      border-radius: 999px;
+      padding: 2px 8px;
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 0.2px;
+      border: 1px solid transparent;
+    }
+    .dbg-pill.ok {
+      background: rgba(34, 197, 94, 0.15);
+      border-color: rgba(74, 222, 128, 0.55);
+      color: #86efac;
+    }
+    .dbg-pill.warn {
+      background: rgba(245, 158, 11, 0.16);
+      border-color: rgba(251, 191, 36, 0.55);
+      color: #fde68a;
+    }
+    .dbg-pill.error {
+      background: rgba(239, 68, 68, 0.16);
+      border-color: rgba(248, 113, 113, 0.55);
+      color: #fca5a5;
+    }
+    .debug-details {
+      margin-top: 8px;
+      border-top: 1px solid rgba(148, 163, 184, 0.2);
+      padding-top: 6px;
+    }
+    .debug-details summary {
+      color: #93c5fd;
+      cursor: pointer;
+      user-select: none;
+      margin-bottom: 6px;
+    }
+    .debug-log {
+      background: rgba(2, 6, 23, 0.7);
+      border: 1px solid rgba(71, 85, 105, 0.45);
+      border-radius: 8px;
+      padding: 6px;
+      max-height: 110px;
+      overflow: auto;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      color: #cbd5e1;
+    }
+    .debug-log-line {
+      margin-bottom: 4px;
+      line-height: 1.35;
+    }
+    .debug-log-line.warn { color: #fcd34d; }
+    .debug-log-line.error { color: #fda4af; }
+    .debug-log-line:last-child { margin-bottom: 0; }
+    @media (max-width: 640px) {
+      .debug-panel {
+        left: 8px;
+        right: 8px;
+        bottom: 8px;
+        width: auto;
+      }
+      .debug-summary {
+        max-width: 220px;
+      }
+    }
   </style>
 </head>
 <body>
@@ -243,10 +364,46 @@
     </div>
 
     <div class="device-switcher">
-      <button class="active" onclick="setDevice(393, 852, 50, this)">iPhone 15 Pro</button>
+      <button class="active" onclick="setDevice(390, 780, 12, this)">Samsung S7</button>
       <button onclick="setDevice(360, 780, 44, this)">Android</button>
       <button onclick="setDevice(430, 932, 55, this)">iPhone 15 Pro Max</button>
       <button onclick="setDevice(768, 1024, 20, this)">iPad Mini</button>
+    </div>
+  </div>
+
+  <div class="debug-panel" id="debug-panel" aria-live="polite">
+    <div class="debug-header">
+      <div>
+        <div class="debug-title">Preview Debugger</div>
+        <div class="debug-summary" id="dbg-summary">Initializing preview checks...</div>
+      </div>
+      <button id="debug-toggle" class="debug-toggle" type="button" aria-expanded="true" aria-controls="debug-content">−</button>
+    </div>
+
+    <div class="debug-content" id="debug-content">
+      <div class="debug-grid">
+        <div class="debug-row"><span>Preview page</span><span id="dbg-preview" class="dbg-pill warn">Checking</span></div>
+        <div class="debug-row"><span>App iframe load</span><span id="dbg-iframe" class="dbg-pill warn">Waiting</span></div>
+        <div class="debug-row"><span>App load verdict</span><span id="dbg-app-ready" class="dbg-pill warn">Checking</span></div>
+        <div class="debug-row"><span>Network</span><span id="dbg-network" class="dbg-pill warn">Checking</span></div>
+        <div class="debug-row"><span>Server probe</span><span id="dbg-server" class="dbg-pill warn">Pending</span></div>
+        <div class="debug-row"><span>API calls observed</span><span id="dbg-api-count">0</span></div>
+        <div class="debug-row"><span>API success (2xx)</span><span id="dbg-api-success">0</span></div>
+        <div class="debug-row"><span>API failure (!2xx)</span><span id="dbg-api-fail">0</span></div>
+        <div class="debug-row"><span>Last API activity</span><span id="dbg-api-last">Never</span></div>
+        <div class="debug-row"><span>API freshness</span><span id="dbg-api-fresh" class="dbg-pill warn">Unknown</span></div>
+        <div class="debug-row"><span>Total transfer</span><span id="dbg-transfer-mb">0.00 MB</span></div>
+        <div class="debug-row"><span>Total resources</span><span id="dbg-resource-mb">0.00 MB</span></div>
+        <div class="debug-row"><span>Heartbeat</span><span id="dbg-heartbeat">0</span></div>
+        <div class="debug-row"><span>Uptime</span><span id="dbg-uptime">0s</span></div>
+        <div class="debug-row"><span>Last iframe load</span><span id="dbg-last-load">Never</span></div>
+        <div class="debug-row"><span>Frame URL</span><span id="dbg-frame-url">/</span></div>
+      </div>
+
+      <details class="debug-details">
+        <summary>Event log</summary>
+        <div class="debug-log" id="dbg-log"></div>
+      </details>
     </div>
   </div>
 
@@ -261,6 +418,623 @@
       document.querySelectorAll('.device-switcher button').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
     }
+
+    const debugState = {
+      startedAt: Date.now(),
+      heartbeat: 0,
+      iframeLoadedAt: null,
+      networkOnline: navigator.onLine,
+      serverOk: null,
+      lastServerSignature: null,
+      apiObservedKeys: new Set(),
+      resourceObservedKeys: new Set(),
+      apiCount: 0,
+      apiSuccessCount: 0,
+      apiFailureCount: 0,
+      apiTransferBytesTotal: 0,
+      apiDecodedBytesTotal: 0,
+      resourceTimingTransferBytesTotal: 0,
+      resourceTimingDecodedBytesTotal: 0,
+      navigationBytesCaptured: false,
+      lastApiAt: null,
+      apiInspectorAvailable: true,
+      apiFreshnessSignature: null,
+      networkHookInstalled: false
+    };
+
+    const debugEls = {
+      panel: document.getElementById('debug-panel'),
+      summary: document.getElementById('dbg-summary'),
+      preview: document.getElementById('dbg-preview'),
+      iframe: document.getElementById('dbg-iframe'),
+      appReady: document.getElementById('dbg-app-ready'),
+      network: document.getElementById('dbg-network'),
+      server: document.getElementById('dbg-server'),
+      apiCount: document.getElementById('dbg-api-count'),
+      apiSuccess: document.getElementById('dbg-api-success'),
+      apiFail: document.getElementById('dbg-api-fail'),
+      apiLast: document.getElementById('dbg-api-last'),
+      apiFresh: document.getElementById('dbg-api-fresh'),
+      transferMb: document.getElementById('dbg-transfer-mb'),
+      resourceMb: document.getElementById('dbg-resource-mb'),
+      heartbeat: document.getElementById('dbg-heartbeat'),
+      uptime: document.getElementById('dbg-uptime'),
+      lastLoad: document.getElementById('dbg-last-load'),
+      frameUrl: document.getElementById('dbg-frame-url'),
+      log: document.getElementById('dbg-log'),
+      toggle: document.getElementById('debug-toggle')
+    };
+
+    function setDebugPill(el, label, tone) {
+      el.textContent = label;
+      el.className = 'dbg-pill ' + tone;
+    }
+
+    function addDebugLog(message, tone = 'info') {
+      const line = document.createElement('div');
+      line.className = 'debug-log-line ' + tone;
+      line.textContent = '[' + new Date().toLocaleTimeString() + '] ' + message;
+      debugEls.log.prepend(line);
+
+      while (debugEls.log.children.length > 25) {
+        debugEls.log.removeChild(debugEls.log.lastChild);
+      }
+    }
+
+    function getUptimeSeconds() {
+      return Math.floor((Date.now() - debugState.startedAt) / 1000);
+    }
+
+    function getApiAgeSeconds() {
+      if (!debugState.lastApiAt) {
+        return null;
+      }
+      return Math.floor((Date.now() - debugState.lastApiAt) / 1000);
+    }
+
+    function trimEndpoint(url) {
+      try {
+        const parsed = new URL(url, window.location.origin);
+        return parsed.pathname || '/';
+      } catch (_error) {
+        return String(url).slice(0, 60);
+      }
+    }
+
+    function formatMb(bytes) {
+      return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
+    }
+
+    function safeBytes(value) {
+      const parsed = Number(value);
+      if (!Number.isFinite(parsed) || parsed <= 0) {
+        return 0;
+      }
+      return parsed;
+    }
+
+    function isLikelyApiUrl(rawUrl) {
+      try {
+        const parsed = new URL(rawUrl, window.location.origin);
+        const path = (parsed.pathname || '').toLowerCase();
+        const staticAsset = /\.(js|css|map|png|jpe?g|gif|svg|webp|ico|woff2?|ttf|otf|wasm)(\?|$)/i;
+
+        if (
+          path.startsWith('/assets/') ||
+          path.startsWith('/canvaskit/') ||
+          path.startsWith('/flutter_') ||
+          staticAsset.test(path)
+        ) {
+          return false;
+        }
+
+        // Treat fetch/xhr calls as API-like traffic unless clearly static assets.
+        return true;
+      } catch (_error) {
+        return false;
+      }
+    }
+
+    function extractEntryBytes(entry) {
+      const transfer = safeBytes(entry.transferSize) || safeBytes(entry.encodedBodySize) || safeBytes(entry.decodedBodySize);
+      const decoded = safeBytes(entry.decodedBodySize) || safeBytes(entry.encodedBodySize) || transfer;
+      return { transfer, decoded };
+    }
+
+    function refreshTrafficTotals() {
+      const totalTransfer = debugState.resourceTimingTransferBytesTotal + debugState.apiTransferBytesTotal;
+      const totalResources = debugState.resourceTimingDecodedBytesTotal + debugState.apiDecodedBytesTotal;
+      debugEls.transferMb.textContent = formatMb(totalTransfer);
+      debugEls.resourceMb.textContent = formatMb(totalResources);
+    }
+
+    function refreshApiCounters() {
+      debugEls.apiCount.textContent = String(debugState.apiCount);
+      debugEls.apiSuccess.textContent = String(debugState.apiSuccessCount);
+      debugEls.apiFail.textContent = String(debugState.apiFailureCount);
+    }
+
+    function recordApiCall(event) {
+      const transferBytes = safeBytes(event.transferBytes);
+      const decodedBytes = safeBytes(event.decodedBytes) || transferBytes;
+      const statusCode = Number(event.statusCode || 0);
+      const endpoint = trimEndpoint(event.url || '/');
+
+      debugState.apiCount += 1;
+      debugState.apiTransferBytesTotal += transferBytes;
+      debugState.apiDecodedBytesTotal += decodedBytes;
+      debugState.lastApiAt = Date.now();
+
+      if (statusCode >= 200 && statusCode < 300) {
+        debugState.apiSuccessCount += 1;
+      } else {
+        debugState.apiFailureCount += 1;
+      }
+
+      refreshApiCounters();
+      refreshTrafficTotals();
+      debugEls.apiLast.textContent = 'just now';
+
+      const tone = statusCode >= 200 && statusCode < 300 ? 'info' : 'warn';
+      addDebugLog('API ' + (statusCode || 'ERR') + ' • ' + endpoint + ' • ' + formatMb(decodedBytes), tone);
+    }
+
+    async function captureFetchApiCall(url, response) {
+      const contentLengthHeader = safeBytes(response.headers.get('content-length'));
+      let decodedBytes = 0;
+
+      try {
+        const clone = response.clone();
+        const buffer = await clone.arrayBuffer();
+        decodedBytes = safeBytes(buffer.byteLength);
+      } catch (error) {
+        addDebugLog('Fetch payload size unavailable for ' + trimEndpoint(url) + ': ' + error.message, 'warn');
+      }
+
+      recordApiCall({
+        url,
+        statusCode: response.status,
+        transferBytes: contentLengthHeader || decodedBytes,
+        decodedBytes
+      });
+    }
+
+    function captureNavigationBytes(frameWindow) {
+      if (debugState.navigationBytesCaptured || !frameWindow || !frameWindow.performance) {
+        return;
+      }
+
+      const navEntries = frameWindow.performance.getEntriesByType('navigation');
+      if (!navEntries || navEntries.length === 0) {
+        return;
+      }
+
+      const nav = navEntries[0];
+      const bytes = extractEntryBytes(nav);
+
+      debugState.resourceTimingTransferBytesTotal += bytes.transfer;
+      debugState.resourceTimingDecodedBytesTotal += bytes.decoded;
+      debugState.navigationBytesCaptured = true;
+      refreshTrafficTotals();
+
+      if (bytes.transfer > 0 || bytes.decoded > 0) {
+        addDebugLog('Captured navigation payload: ' + formatMb(bytes.decoded), 'info');
+      }
+    }
+
+    function installIframeNetworkHook(appFrame) {
+      if (debugState.networkHookInstalled) {
+        return true;
+      }
+
+      try {
+        const frameWindow = appFrame.contentWindow;
+        if (!frameWindow || !frameWindow.fetch || !frameWindow.XMLHttpRequest) {
+          return false;
+        }
+
+        if (frameWindow.__qpPreviewHookInstalled) {
+          debugState.networkHookInstalled = true;
+          return true;
+        }
+
+        frameWindow.__qpPreviewHookInstalled = true;
+
+        const originalFetch = frameWindow.fetch.bind(frameWindow);
+        frameWindow.fetch = function patchedFetch(input, init) {
+          const requestUrl =
+            typeof input === 'string' || input instanceof URL
+              ? String(input)
+              : input && input.url
+                ? String(input.url)
+                : '';
+
+          return originalFetch(input, init)
+            .then((response) => {
+              if (isLikelyApiUrl(requestUrl)) {
+                void captureFetchApiCall(requestUrl, response);
+              }
+              return response;
+            })
+            .catch((error) => {
+              if (isLikelyApiUrl(requestUrl)) {
+                recordApiCall({
+                  url: requestUrl,
+                  statusCode: 0,
+                  transferBytes: 0,
+                  decodedBytes: 0
+                });
+              }
+              throw error;
+            });
+        };
+
+        const xhrProto = frameWindow.XMLHttpRequest.prototype;
+        if (!xhrProto.__qpPreviewHookInstalled) {
+          const originalOpen = xhrProto.open;
+          const originalSend = xhrProto.send;
+
+          xhrProto.open = function patchedOpen(method, url, ...rest) {
+            this.__qpPreviewUrl = String(url || '');
+            return originalOpen.call(this, method, url, ...rest);
+          };
+
+          xhrProto.send = function patchedSend(...args) {
+            if (!this.__qpPreviewTracked) {
+              this.__qpPreviewTracked = true;
+
+              this.addEventListener('loadend', function onLoadEnd() {
+                const requestUrl = this.__qpPreviewUrl || '';
+                if (!isLikelyApiUrl(requestUrl)) {
+                  return;
+                }
+
+                const transferHeader = safeBytes(this.getResponseHeader && this.getResponseHeader('content-length'));
+                let decodedBytes = 0;
+
+                if ((this.responseType === '' || this.responseType === 'text') && typeof this.responseText === 'string') {
+                  try {
+                    decodedBytes = safeBytes(new Blob([this.responseText]).size);
+                  } catch (_error) {
+                    decodedBytes = safeBytes(this.responseText.length);
+                  }
+                } else if (this.responseType === 'json' && this.response != null) {
+                  try {
+                    decodedBytes = safeBytes(new Blob([JSON.stringify(this.response)]).size);
+                  } catch (_error) {
+                    decodedBytes = 0;
+                  }
+                } else if (this.responseType === 'arraybuffer' && this.response instanceof ArrayBuffer) {
+                  decodedBytes = safeBytes(this.response.byteLength);
+                } else if (this.responseType === 'blob' && this.response && typeof this.response.size === 'number') {
+                  decodedBytes = safeBytes(this.response.size);
+                }
+
+                recordApiCall({
+                  url: requestUrl,
+                  statusCode: Number(this.status || 0),
+                  transferBytes: transferHeader || decodedBytes,
+                  decodedBytes
+                });
+              });
+            }
+
+            return originalSend.apply(this, args);
+          };
+
+          xhrProto.__qpPreviewHookInstalled = true;
+        }
+
+        debugState.networkHookInstalled = true;
+        addDebugLog('Installed iframe network hook for real API metrics');
+        return true;
+      } catch (error) {
+        addDebugLog('Failed to install iframe network hook: ' + error.message, 'warn');
+        return false;
+      }
+    }
+
+    function refreshAppLoadVerdict() {
+      if (debugState.iframeLoadedAt) {
+        setDebugPill(debugEls.appReady, 'Loaded', 'ok');
+        return;
+      }
+
+      const uptime = getUptimeSeconds();
+      if (uptime >= 25) {
+        setDebugPill(debugEls.appReady, 'Not loaded (timeout)', 'error');
+      } else {
+        setDebugPill(debugEls.appReady, 'Waiting...', 'warn');
+      }
+    }
+
+    function refreshApiFreshness() {
+      if (!debugState.apiInspectorAvailable) {
+        setDebugPill(debugEls.apiFresh, 'Unavailable', 'warn');
+        return;
+      }
+
+      if (!debugState.iframeLoadedAt) {
+        setDebugPill(debugEls.apiFresh, 'Waiting app', 'warn');
+        return;
+      }
+
+      if (debugState.apiCount === 0) {
+        const noApiSignature = 'no-api';
+        setDebugPill(debugEls.apiFresh, 'No API seen', 'warn');
+        if (debugState.apiFreshnessSignature !== noApiSignature) {
+          addDebugLog('No API calls observed yet from app frame', 'warn');
+          debugState.apiFreshnessSignature = noApiSignature;
+        }
+        return;
+      }
+
+      const age = getApiAgeSeconds();
+      debugEls.apiLast.textContent = age + 's ago';
+
+      if (age <= 20) {
+        if (debugState.apiFreshnessSignature !== 'active') {
+          addDebugLog('API activity is active', 'info');
+          debugState.apiFreshnessSignature = 'active';
+        }
+        setDebugPill(debugEls.apiFresh, 'Active', 'ok');
+        return;
+      }
+
+      if (age <= 60) {
+        if (debugState.apiFreshnessSignature !== 'idle') {
+          addDebugLog('API activity is quiet (' + age + 's)', 'warn');
+          debugState.apiFreshnessSignature = 'idle';
+        }
+        setDebugPill(debugEls.apiFresh, 'Idle (' + age + 's)', 'warn');
+        return;
+      }
+
+      if (debugState.apiFreshnessSignature !== 'stale') {
+        addDebugLog('API activity looks stale (' + age + 's without calls)', 'error');
+        debugState.apiFreshnessSignature = 'stale';
+      }
+      setDebugPill(debugEls.apiFresh, 'Stale (' + age + 's)', 'error');
+    }
+
+    function scanIframeApiActivity() {
+      const appFrame = document.getElementById('app-frame');
+
+      try {
+        if (!appFrame.contentWindow || !appFrame.contentWindow.performance) {
+          return;
+        }
+
+        captureNavigationBytes(appFrame.contentWindow);
+
+        const entries = appFrame.contentWindow.performance.getEntriesByType('resource');
+        let discovered = 0;
+
+        for (const entry of entries) {
+          const key = [
+            entry.name,
+            entry.initiatorType,
+            Math.round(entry.startTime),
+            Math.round(entry.responseEnd)
+          ].join('|');
+
+          if (debugState.resourceObservedKeys.has(key)) {
+            continue;
+          }
+
+          debugState.resourceObservedKeys.add(key);
+          discovered += 1;
+
+          const isApiLike =
+            entry.initiatorType === 'fetch' ||
+            entry.initiatorType === 'xmlhttprequest' ||
+            isLikelyApiUrl(entry.name);
+          const bytes = extractEntryBytes(entry);
+
+          if (!isApiLike) {
+            debugState.resourceTimingTransferBytesTotal += bytes.transfer;
+            debugState.resourceTimingDecodedBytesTotal += bytes.decoded;
+            continue;
+          }
+
+          // Keep timing-based API counting only when hooks are unavailable.
+          if (!debugState.networkHookInstalled) {
+            debugState.apiObservedKeys.add(key);
+            debugState.apiCount += 1;
+            debugState.apiTransferBytesTotal += bytes.transfer;
+            debugState.apiDecodedBytesTotal += bytes.decoded;
+            debugState.lastApiAt = Date.now();
+
+            const statusCode = Number(entry.responseStatus || 0);
+            if (statusCode >= 200 && statusCode < 300) {
+              debugState.apiSuccessCount += 1;
+            } else if (statusCode > 0) {
+              debugState.apiFailureCount += 1;
+            }
+          }
+        }
+
+        refreshApiCounters();
+        refreshTrafficTotals();
+
+        if (debugState.lastApiAt) {
+          debugEls.apiLast.textContent = 'just now';
+        }
+
+        if (discovered > 0) {
+          const latest = entries[entries.length - 1];
+          const endpoint = latest ? trimEndpoint(latest.name) : '/';
+          addDebugLog('Observed ' + discovered + ' new resource event(s), latest: ' + endpoint, 'info');
+        }
+      } catch (error) {
+        debugState.apiInspectorAvailable = false;
+        debugEls.apiCount.textContent = 'Unavailable';
+        debugEls.apiLast.textContent = 'No frame access';
+        if (debugState.apiFreshnessSignature !== 'inspector-error') {
+          addDebugLog('Cannot inspect iframe API activity: ' + error.message, 'warn');
+          debugState.apiFreshnessSignature = 'inspector-error';
+        }
+      }
+    }
+
+    function updateSummary() {
+      const iframeReady = debugState.iframeLoadedAt !== null;
+      const appTimedOut = !iframeReady && getUptimeSeconds() >= 25;
+      const apiAge = getApiAgeSeconds();
+      const apiStale = apiAge !== null && apiAge > 60;
+
+      let statusText = 'CHECKING';
+      if (appTimedOut) {
+        statusText = 'APP NOT LOADED';
+      } else if (!debugState.networkOnline || debugState.serverOk === false) {
+        statusText = 'NETWORK ISSUE';
+      } else if (iframeReady && apiStale) {
+        statusText = 'API STALE';
+      } else if (iframeReady) {
+        statusText = 'LIVE';
+      }
+
+      const networkText = debugState.networkOnline ? 'online' : 'offline';
+      debugEls.summary.textContent = statusText + ' • heartbeat ' + debugState.heartbeat + ' • ' + networkText;
+    }
+
+    function setNetworkStatus(isOnline) {
+      debugState.networkOnline = isOnline;
+      setDebugPill(debugEls.network, isOnline ? 'Online' : 'Offline', isOnline ? 'ok' : 'error');
+      addDebugLog('Network changed: ' + (isOnline ? 'online' : 'offline'), isOnline ? 'info' : 'warn');
+      updateSummary();
+    }
+
+    function probeServer() {
+      const started = performance.now();
+
+      fetch('/', { cache: 'no-store' })
+        .then((response) => {
+          const latencyMs = Math.round(performance.now() - started);
+          const ok = response.ok;
+          const statusLabel = ok ? 'OK (' + response.status + ')' : 'HTTP ' + response.status;
+          const signature = statusLabel;
+
+          debugState.serverOk = ok;
+          setDebugPill(debugEls.server, statusLabel, ok ? 'ok' : 'warn');
+
+          if (signature !== debugState.lastServerSignature) {
+            addDebugLog('Server probe: ' + statusLabel + ' in ' + latencyMs + 'ms', ok ? 'info' : 'warn');
+            debugState.lastServerSignature = signature;
+          }
+
+          updateSummary();
+        })
+        .catch((error) => {
+          debugState.serverOk = false;
+          setDebugPill(debugEls.server, 'Unreachable', 'error');
+
+          if (debugState.lastServerSignature !== 'unreachable') {
+            addDebugLog('Server probe failed: ' + error.message, 'error');
+            debugState.lastServerSignature = 'unreachable';
+          }
+
+          updateSummary();
+        });
+    }
+
+    function wireFrameDebugger() {
+      const appFrame = document.getElementById('app-frame');
+
+      appFrame.addEventListener('load', () => {
+        debugState.iframeLoadedAt = Date.now();
+        setDebugPill(debugEls.iframe, 'Loaded', 'ok');
+        debugEls.lastLoad.textContent = new Date(debugState.iframeLoadedAt).toLocaleTimeString();
+
+        try {
+          debugEls.frameUrl.textContent = appFrame.contentWindow.location.href;
+        } catch (error) {
+          debugEls.frameUrl.textContent = 'Frame URL not accessible';
+          addDebugLog('Frame URL blocked: ' + error.message, 'warn');
+        }
+
+        scanIframeApiActivity();
+        installIframeNetworkHook(appFrame);
+
+        addDebugLog('App iframe loaded successfully');
+        updateSummary();
+      });
+
+      appFrame.addEventListener('error', () => {
+        setDebugPill(debugEls.iframe, 'Load error', 'error');
+        addDebugLog('App iframe load error', 'error');
+        updateSummary();
+      });
+    }
+
+    function startHeartbeat() {
+      window.setInterval(() => {
+        debugState.heartbeat += 1;
+        debugEls.heartbeat.textContent = String(debugState.heartbeat);
+        debugEls.uptime.textContent = getUptimeSeconds() + 's';
+
+        if (debugState.heartbeat % 10 === 0) {
+          probeServer();
+        }
+
+        if (debugState.heartbeat % 3 === 0) {
+          scanIframeApiActivity();
+        }
+
+        refreshAppLoadVerdict();
+        refreshApiFreshness();
+
+        updateSummary();
+      }, 1000);
+    }
+
+    function wireGlobalErrorHandlers() {
+      window.addEventListener('error', (event) => {
+        addDebugLog('Window error: ' + event.message, 'error');
+      });
+
+      window.addEventListener('unhandledrejection', (event) => {
+        const reason = event.reason && event.reason.message ? event.reason.message : String(event.reason);
+        addDebugLog('Unhandled rejection: ' + reason, 'error');
+      });
+    }
+
+    function wireDebuggerToggle() {
+      debugEls.toggle.addEventListener('click', () => {
+        const collapsed = debugEls.panel.classList.toggle('collapsed');
+        debugEls.toggle.textContent = collapsed ? '+' : '−';
+        debugEls.toggle.setAttribute('aria-expanded', String(!collapsed));
+      });
+    }
+
+    function initPreviewDebugger() {
+      setDebugPill(debugEls.preview, 'Loaded', 'ok');
+      setDebugPill(debugEls.iframe, 'Waiting', 'warn');
+      setDebugPill(debugEls.appReady, 'Checking', 'warn');
+      setNetworkStatus(navigator.onLine);
+      setDebugPill(debugEls.server, 'Pending', 'warn');
+      setDebugPill(debugEls.apiFresh, 'Unknown', 'warn');
+      debugEls.apiCount.textContent = '0';
+      debugEls.apiSuccess.textContent = '0';
+      debugEls.apiFail.textContent = '0';
+      debugEls.apiLast.textContent = 'Never';
+      debugEls.transferMb.textContent = '0.00 MB';
+      debugEls.resourceMb.textContent = '0.00 MB';
+      debugEls.frameUrl.textContent = window.location.origin + '/';
+
+      wireFrameDebugger();
+      wireGlobalErrorHandlers();
+      wireDebuggerToggle();
+      startHeartbeat();
+      probeServer();
+
+      addDebugLog('Preview debugger initialized');
+      updateSummary();
+    }
+
+    window.addEventListener('online', () => setNetworkStatus(true));
+    window.addEventListener('offline', () => setNetworkStatus(false));
+    initPreviewDebugger();
   </script>
 </body>
 </html>

@@ -11,6 +11,7 @@ import '../../../features/posts/models/media_model.dart';
 import '../../../features/posts/models/post_model.dart';
 import '../../../features/posts/providers/post_provider.dart';
 import '../providers/content_provider.dart';
+import 'local_video_preview.dart';
 
 /// Modal for editing a published post — mirrors the web EditPublishedModal
 /// with full media CRUD (add/remove), 3-column grid, video support,
@@ -47,11 +48,15 @@ class _EditPostModalState extends State<EditPostModal> {
   bool _isSaving = false;
   String? _error;
 
+  /// Reels only allow description edits — no media add/remove
+  bool get _isReel => widget.post.post_type == 'Reel';
+
   @override
   void initState() {
     super.initState();
-    _textController =
-        TextEditingController(text: widget.post.description ?? '');
+    _textController = TextEditingController(
+      text: widget.post.description ?? '',
+    );
     _existingMedia = List.from(widget.post.media ?? []);
   }
 
@@ -72,11 +77,18 @@ class _EditPostModalState extends State<EditPostModal> {
   }
 
   bool _isVideoFile(XFile file) {
-    final ext = file.path.split('.').last.toLowerCase();
-    return ['mp4', 'mov', 'avi', 'webm', 'mkv'].contains(ext);
+    final name = file.name.toLowerCase();
+    final path = file.path.toLowerCase();
+    final mime = (file.mimeType ?? '').toLowerCase();
+
+    if (mime.startsWith('video/')) return true;
+
+    const videoExts = ['.mp4', '.mov', '.avi', '.webm', '.mkv', '.m4v'];
+    return videoExts.any((ext) => name.endsWith(ext) || path.endsWith(ext));
   }
 
   Future<void> _pickMedia() async {
+    if (_isReel) return; // Reels don't support media changes
     final maxNew = 10 - _totalMedia;
     if (maxNew <= 0) return;
 
@@ -89,6 +101,7 @@ class _EditPostModalState extends State<EditPostModal> {
   }
 
   void _removeExistingMedia(int index) {
+    if (_isReel) return; // Reels don't support media changes
     final m = _existingMedia[index];
     if (m.id != null) {
       _removedMediaIds.add(m.id!);
@@ -105,6 +118,7 @@ class _EditPostModalState extends State<EditPostModal> {
     });
 
     final pageId = context.read<ManagedPagesProvider>().activePageId;
+    final postProvider = context.read<PostProvider>();
     if (pageId == null || widget.post.id == null) {
       setState(() {
         _isSaving = false;
@@ -121,10 +135,12 @@ class _EditPostModalState extends State<EditPostModal> {
         final formData = FormData();
         for (final file in _newMediaFiles) {
           final bytes = await file.readAsBytes();
-          formData.files.add(MapEntry(
-            'media',
-            MultipartFile.fromBytes(bytes, filename: file.name),
-          ));
+          formData.files.add(
+            MapEntry(
+              'media',
+              MultipartFile.fromBytes(bytes, filename: file.name),
+            ),
+          );
         }
         var uploaded = await cp.uploadPostMedia(pageId, formData);
 
@@ -135,10 +151,12 @@ class _EditPostModalState extends State<EditPostModal> {
           for (final file in _newMediaFiles) {
             final singleForm = FormData();
             final bytes = await file.readAsBytes();
-            singleForm.files.add(MapEntry(
-              'media',
-              MultipartFile.fromBytes(bytes, filename: file.name),
-            ));
+            singleForm.files.add(
+              MapEntry(
+                'media',
+                MultipartFile.fromBytes(bytes, filename: file.name),
+              ),
+            );
             final result = await cp.uploadPostMedia(pageId, singleForm);
             if (result != null) {
               individualResults.addAll(result);
@@ -162,14 +180,12 @@ class _EditPostModalState extends State<EditPostModal> {
         uploadedFilenames = uploaded;
       }
 
-      final postProvider = context.read<PostProvider>();
       final success = await postProvider.editPost(
         pageId,
         widget.post.id!,
         description: _textController.text.trim(),
         addMedia: uploadedFilenames,
-        removeMediaIds:
-            _removedMediaIds.isNotEmpty ? _removedMediaIds : null,
+        removeMediaIds: _removedMediaIds.isNotEmpty ? _removedMediaIds : null,
       );
 
       if (!mounted) return;
@@ -214,8 +230,10 @@ class _EditPostModalState extends State<EditPostModal> {
             _buildHeader(),
             Expanded(
               child: ListView(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 8,
+                ),
                 children: [
                   // Page info
                   _buildPageRow(page),
@@ -231,13 +249,20 @@ class _EditPostModalState extends State<EditPostModal> {
                       ),
                       child: Row(
                         children: [
-                          Icon(Icons.error_outline,
-                              size: 16, color: Colors.red[700]),
+                          Icon(
+                            Icons.error_outline,
+                            size: 16,
+                            color: Colors.red[700],
+                          ),
                           const SizedBox(width: 8),
                           Expanded(
-                            child: Text(_error!,
-                                style: TextStyle(
-                                    fontSize: 13, color: Colors.red[700])),
+                            child: Text(
+                              _error!,
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: Colors.red[700],
+                              ),
+                            ),
                           ),
                         ],
                       ),
@@ -282,9 +307,7 @@ class _EditPostModalState extends State<EditPostModal> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        border: Border(
-          bottom: BorderSide(color: Colors.grey[200]!),
-        ),
+        border: Border(bottom: BorderSide(color: Colors.grey[200]!)),
       ),
       child: Row(
         children: [
@@ -292,14 +315,11 @@ class _EditPostModalState extends State<EditPostModal> {
             onPressed: () => Navigator.pop(context),
             icon: const Icon(Icons.close, size: 24),
           ),
-          const Expanded(
+          Expanded(
             child: Text(
-              'Edit Post',
+              _isReel ? 'Edit Reel' : 'Edit Post',
               textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.w700,
-              ),
+              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
             ),
           ),
           TextButton(
@@ -315,8 +335,7 @@ class _EditPostModalState extends State<EditPostModal> {
                     style: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.w600,
-                      color:
-                          _hasChanges ? AppColors.primary : Colors.grey[400],
+                      color: _hasChanges ? AppColors.primary : Colors.grey[400],
                     ),
                   ),
           ),
@@ -332,8 +351,7 @@ class _EditPostModalState extends State<EditPostModal> {
         CircleAvatar(
           radius: 20,
           backgroundImage: page?.profilePic != null
-              ? NetworkImage(
-                  ApiConstants.pageProfileUrl(page.profilePic))
+              ? NetworkImage(ApiConstants.pageProfileUrl(page.profilePic))
               : null,
           child: page?.profilePic == null
               ? const Icon(Icons.store, size: 20)
@@ -343,10 +361,7 @@ class _EditPostModalState extends State<EditPostModal> {
         Expanded(
           child: Text(
             page?.pageName ?? 'Your Page',
-            style: const TextStyle(
-              fontWeight: FontWeight.w600,
-              fontSize: 15,
-            ),
+            style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
           ),
         ),
       ],
@@ -384,9 +399,7 @@ class _EditPostModalState extends State<EditPostModal> {
     final m = _existingMedia[index];
     final isVideo = m.isVideo;
     String url;
-    if (isVideo &&
-        m.videoThumbnail != null &&
-        m.videoThumbnail!.isNotEmpty) {
+    if (isVideo && m.videoThumbnail != null && m.videoThumbnail!.isNotEmpty) {
       url = ApiConstants.videoThumbnailUrl(m.videoThumbnail);
     } else {
       url = ApiConstants.postMediaUrl(m.media);
@@ -398,19 +411,24 @@ class _EditPostModalState extends State<EditPostModal> {
         ClipRRect(
           borderRadius: BorderRadius.circular(8),
           child: url.isNotEmpty
-              ? Image.network(url, fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) => Container(
-                        color: Colors.grey[200],
-                        child: Icon(
-                            isVideo ? Icons.videocam : Icons.image,
-                            color: Colors.grey),
-                      ))
+              ? Image.network(
+                  url,
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, error, stackTrace) => Container(
+                    color: Colors.grey[200],
+                    child: Icon(
+                      isVideo ? Icons.videocam : Icons.image,
+                      color: Colors.grey,
+                    ),
+                  ),
+                )
               : Container(
                   color: Colors.grey[200],
                   child: const Icon(Icons.image, color: Colors.grey),
                 ),
         ),
-        // Remove button
+        // Remove button (posts only — reels keep their video)
+        if (!_isReel)
         Positioned(
           top: 4,
           right: 4,
@@ -422,8 +440,7 @@ class _EditPostModalState extends State<EditPostModal> {
                 color: Colors.black54,
                 shape: BoxShape.circle,
               ),
-              child:
-                  const Icon(Icons.close, size: 14, color: Colors.white),
+              child: const Icon(Icons.close, size: 14, color: Colors.white),
             ),
           ),
         ),
@@ -433,8 +450,7 @@ class _EditPostModalState extends State<EditPostModal> {
             bottom: 4,
             left: 4,
             child: Container(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
               decoration: BoxDecoration(
                 color: Colors.black54,
                 borderRadius: BorderRadius.circular(4),
@@ -444,9 +460,10 @@ class _EditPostModalState extends State<EditPostModal> {
                 children: [
                   Icon(Icons.videocam, size: 14, color: Colors.white),
                   SizedBox(width: 2),
-                  Text('Video',
-                      style:
-                          TextStyle(fontSize: 10, color: Colors.white)),
+                  Text(
+                    'Video',
+                    style: TextStyle(fontSize: 10, color: Colors.white),
+                  ),
                 ],
               ),
             ),
@@ -465,21 +482,17 @@ class _EditPostModalState extends State<EditPostModal> {
         ClipRRect(
           borderRadius: BorderRadius.circular(8),
           child: isVideo
-              ? Container(
-                  color: Colors.black,
-                  child: const Center(
-                    child: Icon(Icons.videocam,
-                        color: Colors.white54, size: 32),
+              ? LocalVideoPreview(file: file)
+              : kIsWeb
+              ? Image.network(
+                  file.path,
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, error, stackTrace) => Container(
+                    color: Colors.grey[200],
+                    child: const Icon(Icons.image, color: Colors.grey),
                   ),
                 )
-              : kIsWeb
-                  ? Image.network(file.path, fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) => Container(
-                            color: Colors.grey[200],
-                            child: const Icon(Icons.image,
-                                color: Colors.grey),
-                          ))
-                  : Image.file(File(file.path), fit: BoxFit.cover),
+              : Image.file(File(file.path), fit: BoxFit.cover),
         ),
         // Remove button
         Positioned(
@@ -493,8 +506,7 @@ class _EditPostModalState extends State<EditPostModal> {
                 color: Colors.black54,
                 shape: BoxShape.circle,
               ),
-              child:
-                  const Icon(Icons.close, size: 14, color: Colors.white),
+              child: const Icon(Icons.close, size: 14, color: Colors.white),
             ),
           ),
         ),
@@ -504,8 +516,7 @@ class _EditPostModalState extends State<EditPostModal> {
             bottom: 4,
             left: 4,
             child: Container(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
               decoration: BoxDecoration(
                 color: Colors.black54,
                 borderRadius: BorderRadius.circular(4),
@@ -515,9 +526,10 @@ class _EditPostModalState extends State<EditPostModal> {
                 children: [
                   Icon(Icons.videocam, size: 14, color: Colors.white),
                   SizedBox(width: 2),
-                  Text('Video',
-                      style:
-                          TextStyle(fontSize: 10, color: Colors.white)),
+                  Text(
+                    'Video',
+                    style: TextStyle(fontSize: 10, color: Colors.white),
+                  ),
                 ],
               ),
             ),
@@ -532,17 +544,15 @@ class _EditPostModalState extends State<EditPostModal> {
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: Colors.white,
-        border: Border(
-          top: BorderSide(color: Colors.grey[200]!),
-        ),
+        border: Border(top: BorderSide(color: Colors.grey[200]!)),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // "Add to your post" toolbar
+          // "Add to your post" toolbar (hidden for reels)
+          if (!_isReel)
           Container(
-            padding:
-                const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             decoration: BoxDecoration(
               border: Border.all(color: Colors.grey[200]!),
               borderRadius: BorderRadius.circular(10),
@@ -551,31 +561,39 @@ class _EditPostModalState extends State<EditPostModal> {
               children: [
                 const Text(
                   'Add to your post',
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                  ),
+                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
                 ),
                 const Spacer(),
                 IconButton(
-                  icon: Icon(Icons.photo_library,
-                      color: Colors.green[600], size: 22),
+                  icon: Icon(
+                    Icons.photo_library,
+                    color: Colors.green[600],
+                    size: 22,
+                  ),
                   onPressed: _pickMedia,
                   padding: EdgeInsets.zero,
-                  constraints:
-                      const BoxConstraints(minWidth: 36, minHeight: 36),
+                  constraints: const BoxConstraints(
+                    minWidth: 36,
+                    minHeight: 36,
+                  ),
                 ),
                 IconButton(
-                  icon: Icon(Icons.emoji_emotions,
-                      color: Colors.amber[600], size: 22),
+                  icon: Icon(
+                    Icons.emoji_emotions,
+                    color: Colors.amber[600],
+                    size: 22,
+                  ),
                   onPressed: () {},
                   padding: EdgeInsets.zero,
-                  constraints:
-                      const BoxConstraints(minWidth: 36, minHeight: 36),
+                  constraints: const BoxConstraints(
+                    minWidth: 36,
+                    minHeight: 36,
+                  ),
                 ),
               ],
             ),
           ),
+          if (!_isReel)
           const SizedBox(height: 8),
           // Save button
           SizedBox(

@@ -10,6 +10,8 @@ import '../../../core/constants/api_constants.dart';
 import '../../../features/page_switcher/providers/managed_pages_provider.dart';
 import '../models/content_models.dart';
 import '../providers/content_provider.dart';
+import 'local_video_preview.dart';
+import 'network_video_preview.dart';
 import 'quick_schedule_picker.dart';
 
 /// Modal for editing an existing scheduled post — mirrors the web
@@ -20,8 +22,7 @@ class EditScheduledModal extends StatefulWidget {
 
   const EditScheduledModal({super.key, required this.item});
 
-  static Future<void> show(BuildContext context,
-      {required ContentItem item}) {
+  static Future<void> show(BuildContext context, {required ContentItem item}) {
     return showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -57,8 +58,7 @@ class _EditScheduledModalState extends State<EditScheduledModal> {
   @override
   void initState() {
     super.initState();
-    _textController =
-        TextEditingController(text: widget.item.displayText);
+    _textController = TextEditingController(text: widget.item.displayText);
     _existingMedia = List.from(widget.item.media);
     _contentType = widget.item.contentType;
 
@@ -99,8 +99,11 @@ class _EditScheduledModalState extends State<EditScheduledModal> {
     if (days > 0) parts.add('$days day${days > 1 ? 's' : ''}');
     if (hours > 0) parts.add('$hours hour${hours > 1 ? 's' : ''}');
     if (mins > 0) parts.add('$mins min');
-    setState(() =>
-        _countdownText = parts.isEmpty ? 'less than a minute' : parts.join(', '));
+    setState(
+      () => _countdownText = parts.isEmpty
+          ? 'less than a minute'
+          : parts.join(', '),
+    );
   }
 
   DateTime? get _fullScheduleDate {
@@ -123,7 +126,8 @@ class _EditScheduledModalState extends State<EditScheduledModal> {
   }
 
   bool get _canSave {
-    final hasContent = _textController.text.trim().isNotEmpty ||
+    final hasContent =
+        _textController.text.trim().isNotEmpty ||
         _existingMedia.isNotEmpty ||
         _newMediaFiles.isNotEmpty;
     final dt = _fullScheduleDate;
@@ -133,15 +137,26 @@ class _EditScheduledModalState extends State<EditScheduledModal> {
 
   // Helper: detect if XFile is a video
   bool _isVideoFile(XFile file) {
-    final ext = file.path.split('.').last.toLowerCase();
-    return ['mp4', 'mov', 'avi', 'webm', 'mkv'].contains(ext);
+    final name = file.name.toLowerCase();
+    final path = file.path.toLowerCase();
+    final mime = (file.mimeType ?? '').toLowerCase();
+
+    if (mime.startsWith('video/')) return true;
+
+    const videoExts = ['.mp4', '.mov', '.avi', '.webm', '.mkv', '.m4v'];
+    return videoExts.any((ext) => name.endsWith(ext) || path.endsWith(ext));
   }
 
   // Helper: detect if ContentMedia is a video
   bool _isVideoMedia(ContentMedia m) {
     return m.type == 'video' ||
-        const ['mp4', 'mov', 'avi', 'mkv', 'webm']
-            .any((ext) => m.url.toLowerCase().endsWith('.$ext'));
+        const [
+          'mp4',
+          'mov',
+          'avi',
+          'mkv',
+          'webm',
+        ].any((ext) => m.url.toLowerCase().endsWith('.$ext'));
   }
 
   Future<void> _pickMedia() async {
@@ -198,10 +213,12 @@ class _EditScheduledModalState extends State<EditScheduledModal> {
         final formData = FormData();
         for (final file in _newMediaFiles) {
           final bytes = await file.readAsBytes();
-          formData.files.add(MapEntry(
-            'media',
-            MultipartFile.fromBytes(bytes, filename: file.name),
-          ));
+          formData.files.add(
+            MapEntry(
+              'media',
+              MultipartFile.fromBytes(bytes, filename: file.name),
+            ),
+          );
         }
         var uploaded = await cp.uploadMedia(pageId, formData);
 
@@ -212,10 +229,12 @@ class _EditScheduledModalState extends State<EditScheduledModal> {
           for (final file in _newMediaFiles) {
             final singleForm = FormData();
             final bytes = await file.readAsBytes();
-            singleForm.files.add(MapEntry(
-              'media',
-              MultipartFile.fromBytes(bytes, filename: file.name),
-            ));
+            singleForm.files.add(
+              MapEntry(
+                'media',
+                MultipartFile.fromBytes(bytes, filename: file.name),
+              ),
+            );
             final singleResult = await cp.uploadMedia(pageId, singleForm);
             if (singleResult != null) {
               individualResults.addAll(singleResult);
@@ -237,15 +256,23 @@ class _EditScheduledModalState extends State<EditScheduledModal> {
           return;
         }
         // Combine existing + new media
-        final existingMaps = _existingMedia
-            .map((m) => {'url': m.url, 'type': m.type})
-            .toList();
+        final existingMaps = _existingMedia.map((m) {
+          final item = <String, String>{'url': m.url, 'type': m.type};
+          if (m.thumbnailUrl != null && m.thumbnailUrl!.isNotEmpty) {
+            item['thumbnail_url'] = m.thumbnailUrl!;
+          }
+          return item;
+        }).toList();
         mediaList = [...existingMaps, ...uploaded];
       } else if (_existingMedia.length != widget.item.media.length) {
         // Some existing media was removed
-        mediaList = _existingMedia
-            .map((m) => {'url': m.url, 'type': m.type})
-            .toList();
+        mediaList = _existingMedia.map((m) {
+          final item = <String, String>{'url': m.url, 'type': m.type};
+          if (m.thumbnailUrl != null && m.thumbnailUrl!.isNotEmpty) {
+            item['thumbnail_url'] = m.thumbnailUrl!;
+          }
+          return item;
+        }).toList();
       }
 
       final ok = await cp.updateScheduledContent(
@@ -321,13 +348,20 @@ class _EditScheduledModalState extends State<EditScheduledModal> {
                     ),
                     child: Row(
                       children: [
-                        Icon(Icons.error_outline,
-                            size: 16, color: Colors.red[700]),
+                        Icon(
+                          Icons.error_outline,
+                          size: 16,
+                          color: Colors.red[700],
+                        ),
                         const SizedBox(width: 8),
                         Expanded(
-                          child: Text(_error!,
-                              style: TextStyle(
-                                  fontSize: 13, color: Colors.red[700])),
+                          child: Text(
+                            _error!,
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: Colors.red[700],
+                            ),
+                          ),
                         ),
                       ],
                     ),
@@ -349,10 +383,7 @@ class _EditScheduledModalState extends State<EditScheduledModal> {
                   decoration: InputDecoration(
                     hintText: 'What\'s on your mind, ${page?.pageName ?? ''}?',
                     border: InputBorder.none,
-                    hintStyle: TextStyle(
-                      fontSize: 16,
-                      color: Colors.grey[400],
-                    ),
+                    hintStyle: TextStyle(fontSize: 16, color: Colors.grey[400]),
                   ),
                   style: const TextStyle(fontSize: 16),
                   onChanged: (_) => setState(() {}),
@@ -432,8 +463,7 @@ class _EditScheduledModalState extends State<EditScheduledModal> {
         CircleAvatar(
           radius: 20,
           backgroundImage: page?.profilePic != null
-              ? NetworkImage(
-                  ApiConstants.pageProfileUrl(page.profilePic))
+              ? NetworkImage(ApiConstants.pageProfileUrl(page.profilePic))
               : null,
           child: page?.profilePic == null
               ? const Icon(Icons.store, size: 20)
@@ -443,10 +473,7 @@ class _EditScheduledModalState extends State<EditScheduledModal> {
         Expanded(
           child: Text(
             page?.pageName ?? 'Your Page',
-            style: const TextStyle(
-              fontWeight: FontWeight.w600,
-              fontSize: 15,
-            ),
+            style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
           ),
         ),
       ],
@@ -463,12 +490,9 @@ class _EditScheduledModalState extends State<EditScheduledModal> {
           child: GestureDetector(
             onTap: () => _onContentTypeChanged(type),
             child: Container(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               decoration: BoxDecoration(
-                color: isActive
-                    ? const Color(0xFF307777)
-                    : Colors.grey[100],
+                color: isActive ? const Color(0xFF307777) : Colors.grey[100],
                 borderRadius: BorderRadius.circular(20),
               ),
               child: Row(
@@ -534,8 +558,7 @@ class _EditScheduledModalState extends State<EditScheduledModal> {
           Icon(Icons.info_outline, size: 16, color: color),
           const SizedBox(width: 8),
           Expanded(
-            child:
-                Text(hint, style: TextStyle(fontSize: 12, color: color)),
+            child: Text(hint, style: TextStyle(fontSize: 12, color: color)),
           ),
         ],
       ),
@@ -546,30 +569,100 @@ class _EditScheduledModalState extends State<EditScheduledModal> {
   Widget _buildReelUpload() {
     final hasReel = _newMediaFiles.isNotEmpty || _existingMedia.isNotEmpty;
     if (hasReel) {
+      final hasNew = _newMediaFiles.isNotEmpty;
       final name = _newMediaFiles.isNotEmpty
           ? _newMediaFiles.first.name
           : _existingMedia.first.url.split('/').last;
+
+      String existingPreviewUrl = '';
+      String existingFullUrl = '';
+      bool existingIsVideo = false;
+      if (!hasNew && _existingMedia.isNotEmpty) {
+        final media = _existingMedia.first;
+        existingIsVideo = _isVideoMedia(media);
+        existingPreviewUrl = ApiConstants.contentMediaDisplayUrl(
+          url: media.url,
+          thumbnailUrl: media.thumbnailUrl,
+          type: media.type,
+          mediaBaseDir: media.mediaBaseDir,
+          isScheduled: true,
+        );
+        existingFullUrl = ApiConstants.contentMediaFullUrl(
+          url: media.url,
+          mediaBaseDir: media.mediaBaseDir,
+          isScheduled: true,
+        );
+      }
+
       return Stack(
         children: [
-          Container(
-            height: 180,
-            width: double.infinity,
-            decoration: BoxDecoration(
-              color: Colors.black,
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
+          ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: SizedBox(
+              height: 180,
+              width: double.infinity,
+              child: Stack(
+                fit: StackFit.expand,
                 children: [
-                  const Icon(Icons.videocam,
-                      color: Colors.white54, size: 40),
-                  const SizedBox(height: 8),
-                  Text(
-                    name,
-                    style: const TextStyle(
-                        color: Colors.white70, fontSize: 13),
-                    overflow: TextOverflow.ellipsis,
+                  hasNew
+                      ? LocalVideoPreview(file: _newMediaFiles.first)
+                      : existingPreviewUrl.isNotEmpty
+                      ? Image.network(
+                          existingPreviewUrl,
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, error, stackTrace) =>
+                              existingIsVideo && existingFullUrl.isNotEmpty
+                              ? NetworkVideoPreview(url: existingFullUrl)
+                              : Container(
+                                  color: Colors.black,
+                                  child: const Center(
+                                    child: Icon(
+                                      Icons.videocam,
+                                      color: Colors.white54,
+                                      size: 34,
+                                    ),
+                                  ),
+                                ),
+                        )
+                      : existingIsVideo && existingFullUrl.isNotEmpty
+                      ? NetworkVideoPreview(url: existingFullUrl)
+                      : Container(
+                          color: Colors.black,
+                          child: const Center(
+                            child: Icon(
+                              Icons.videocam,
+                              color: Colors.white54,
+                              size: 34,
+                            ),
+                          ),
+                        ),
+                  Positioned(
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 8,
+                      ),
+                      decoration: const BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.bottomCenter,
+                          end: Alignment.topCenter,
+                          colors: [Colors.black54, Colors.transparent],
+                        ),
+                      ),
+                      child: Text(
+                        name,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
                   ),
                 ],
               ),
@@ -589,8 +682,7 @@ class _EditScheduledModalState extends State<EditScheduledModal> {
                   color: Colors.black54,
                   shape: BoxShape.circle,
                 ),
-                child:
-                    const Icon(Icons.close, size: 16, color: Colors.white),
+                child: const Icon(Icons.close, size: 16, color: Colors.white),
               ),
             ),
           ),
@@ -613,12 +705,18 @@ class _EditScheduledModalState extends State<EditScheduledModal> {
           children: [
             Icon(Icons.video_library, size: 40, color: Colors.grey[400]),
             const SizedBox(height: 8),
-            Text('Add Video',
-                style: TextStyle(
-                    fontWeight: FontWeight.w600, color: Colors.grey[700])),
+            Text(
+              'Add Video',
+              style: TextStyle(
+                fontWeight: FontWeight.w600,
+                color: Colors.grey[700],
+              ),
+            ),
             const SizedBox(height: 4),
-            Text('Upload a video for your reel',
-                style: TextStyle(fontSize: 12, color: Colors.grey[500])),
+            Text(
+              'Upload a video for your reel',
+              style: TextStyle(fontSize: 12, color: Colors.grey[500]),
+            ),
           ],
         ),
       ),
@@ -655,11 +753,17 @@ class _EditScheduledModalState extends State<EditScheduledModal> {
   Widget _buildExistingMediaTile(int index) {
     final m = _existingMedia[index];
     final isVideo = _isVideoMedia(m);
-    final url = ApiConstants.contentMediaDisplayUrl(
+    final displayUrl = ApiConstants.contentMediaDisplayUrl(
       url: m.url,
       thumbnailUrl: m.thumbnailUrl,
       type: m.type,
       mediaBaseDir: m.mediaBaseDir,
+      isScheduled: true,
+    );
+    final fullUrl = ApiConstants.contentMediaFullUrl(
+      url: m.url,
+      mediaBaseDir: m.mediaBaseDir,
+      isScheduled: true,
     );
 
     return Stack(
@@ -667,14 +771,23 @@ class _EditScheduledModalState extends State<EditScheduledModal> {
       children: [
         ClipRRect(
           borderRadius: BorderRadius.circular(8),
-          child: url.isNotEmpty
-              ? Image.network(url, fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) => Container(
-                        color: Colors.grey[200],
-                        child: Icon(
+          child: displayUrl.isNotEmpty
+              ? Image.network(
+                  displayUrl,
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, error, stackTrace) =>
+                      isVideo && fullUrl.isNotEmpty
+                      ? NetworkVideoPreview(url: fullUrl)
+                      : Container(
+                          color: Colors.grey[200],
+                          child: Icon(
                             isVideo ? Icons.videocam : Icons.image,
-                            color: Colors.grey),
-                      ))
+                            color: Colors.grey,
+                          ),
+                        ),
+                )
+              : isVideo && fullUrl.isNotEmpty
+              ? NetworkVideoPreview(url: fullUrl)
               : Container(
                   color: Colors.grey[200],
                   child: const Icon(Icons.image, color: Colors.grey),
@@ -691,8 +804,7 @@ class _EditScheduledModalState extends State<EditScheduledModal> {
                 color: Colors.black54,
                 shape: BoxShape.circle,
               ),
-              child:
-                  const Icon(Icons.close, size: 14, color: Colors.white),
+              child: const Icon(Icons.close, size: 14, color: Colors.white),
             ),
           ),
         ),
@@ -701,8 +813,7 @@ class _EditScheduledModalState extends State<EditScheduledModal> {
             bottom: 4,
             left: 4,
             child: Container(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
               decoration: BoxDecoration(
                 color: Colors.black54,
                 borderRadius: BorderRadius.circular(4),
@@ -712,9 +823,10 @@ class _EditScheduledModalState extends State<EditScheduledModal> {
                 children: [
                   Icon(Icons.videocam, size: 14, color: Colors.white),
                   SizedBox(width: 2),
-                  Text('Video',
-                      style:
-                          TextStyle(fontSize: 10, color: Colors.white)),
+                  Text(
+                    'Video',
+                    style: TextStyle(fontSize: 10, color: Colors.white),
+                  ),
                 ],
               ),
             ),
@@ -733,21 +845,17 @@ class _EditScheduledModalState extends State<EditScheduledModal> {
         ClipRRect(
           borderRadius: BorderRadius.circular(8),
           child: isVideo
-              ? Container(
-                  color: Colors.black,
-                  child: const Center(
-                    child: Icon(Icons.videocam,
-                        color: Colors.white54, size: 32),
+              ? LocalVideoPreview(file: file)
+              : kIsWeb
+              ? Image.network(
+                  file.path,
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, error, stackTrace) => Container(
+                    color: Colors.grey[200],
+                    child: const Icon(Icons.image, color: Colors.grey),
                   ),
                 )
-              : kIsWeb
-                  ? Image.network(file.path, fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) => Container(
-                            color: Colors.grey[200],
-                            child: const Icon(Icons.image,
-                                color: Colors.grey),
-                          ))
-                  : Image.file(File(file.path), fit: BoxFit.cover),
+              : Image.file(File(file.path), fit: BoxFit.cover),
         ),
         Positioned(
           top: 4,
@@ -760,8 +868,7 @@ class _EditScheduledModalState extends State<EditScheduledModal> {
                 color: Colors.black54,
                 shape: BoxShape.circle,
               ),
-              child:
-                  const Icon(Icons.close, size: 14, color: Colors.white),
+              child: const Icon(Icons.close, size: 14, color: Colors.white),
             ),
           ),
         ),
@@ -770,8 +877,7 @@ class _EditScheduledModalState extends State<EditScheduledModal> {
             bottom: 4,
             left: 4,
             child: Container(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
               decoration: BoxDecoration(
                 color: Colors.black54,
                 borderRadius: BorderRadius.circular(4),
@@ -781,9 +887,10 @@ class _EditScheduledModalState extends State<EditScheduledModal> {
                 children: [
                   Icon(Icons.videocam, size: 14, color: Colors.white),
                   SizedBox(width: 2),
-                  Text('Video',
-                      style:
-                          TextStyle(fontSize: 10, color: Colors.white)),
+                  Text(
+                    'Video',
+                    style: TextStyle(fontSize: 10, color: Colors.white),
+                  ),
                 ],
               ),
             ),
@@ -818,8 +925,7 @@ class _EditScheduledModalState extends State<EditScheduledModal> {
               color: const Color(0xFF307777).withValues(alpha: 0.15),
               shape: BoxShape.circle,
             ),
-            child: const Icon(Icons.timer,
-                size: 18, color: Color(0xFF307777)),
+            child: const Icon(Icons.timer, size: 18, color: Color(0xFF307777)),
           ),
           const SizedBox(width: 10),
           Expanded(
@@ -856,9 +962,7 @@ class _EditScheduledModalState extends State<EditScheduledModal> {
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: Colors.white,
-        border: Border(
-          top: BorderSide(color: Colors.grey[200]!),
-        ),
+        border: Border(top: BorderSide(color: Colors.grey[200]!)),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -866,8 +970,7 @@ class _EditScheduledModalState extends State<EditScheduledModal> {
           // "Add to your post" toolbar (hidden for Story)
           if (_contentType != 'Story')
             Container(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               decoration: BoxDecoration(
                 border: Border.all(color: Colors.grey[200]!),
                 borderRadius: BorderRadius.circular(10),
@@ -876,27 +979,34 @@ class _EditScheduledModalState extends State<EditScheduledModal> {
                 children: [
                   const Text(
                     'Add to your post',
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                    ),
+                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
                   ),
                   const Spacer(),
                   IconButton(
-                    icon: Icon(Icons.photo_library,
-                        color: Colors.green[600], size: 22),
+                    icon: Icon(
+                      Icons.photo_library,
+                      color: Colors.green[600],
+                      size: 22,
+                    ),
                     onPressed: _pickMedia,
                     padding: EdgeInsets.zero,
                     constraints: const BoxConstraints(
-                        minWidth: 36, minHeight: 36),
+                      minWidth: 36,
+                      minHeight: 36,
+                    ),
                   ),
                   IconButton(
-                    icon: Icon(Icons.emoji_emotions,
-                        color: Colors.amber[600], size: 22),
+                    icon: Icon(
+                      Icons.emoji_emotions,
+                      color: Colors.amber[600],
+                      size: 22,
+                    ),
                     onPressed: () {},
                     padding: EdgeInsets.zero,
                     constraints: const BoxConstraints(
-                        minWidth: 36, minHeight: 36),
+                      minWidth: 36,
+                      minHeight: 36,
+                    ),
                   ),
                 ],
               ),

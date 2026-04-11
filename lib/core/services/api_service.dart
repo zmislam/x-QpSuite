@@ -20,6 +20,20 @@ class ApiService {
         if (_token != null && _token!.isNotEmpty) {
           options.headers['Authorization'] = 'Bearer $_token';
         }
+        // For FormData uploads, remove the default 'application/json'
+        // Content-Type so the browser (web) or Dio (native) can auto-set
+        // 'multipart/form-data; boundary=...' with the correct boundary.
+        if (options.data is FormData) {
+          options.headers.remove('Content-Type');
+          final fd = options.data as FormData;
+          debugPrint('[ApiService] FormData upload: ${fd.files.length} files, '
+              'boundary=${fd.boundary}');
+          for (final f in fd.files) {
+            debugPrint('[ApiService]   part name="${f.key}" '
+                'filename="${f.value.filename}" '
+                'contentType=${f.value.contentType}');
+          }
+        }
         return handler.next(options);
       },
       onError: (error, handler) {
@@ -104,7 +118,6 @@ class ApiService {
       onSendProgress: onSendProgress,
       cancelToken: cancelToken,
       options: Options(
-        headers: {'Content-Type': 'multipart/form-data'},
         sendTimeout: const Duration(minutes: 5),
         receiveTimeout: const Duration(minutes: 5),
       ),

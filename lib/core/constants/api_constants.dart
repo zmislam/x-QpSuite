@@ -88,6 +88,45 @@ class ApiConstants {
     return '$serverOrigin/uploads/story/$filename';
   }
 
+  /// Scheduled content media URL (uploads/scheduled/)
+  static String scheduledMediaUrl(String? filename) {
+    if (filename == null || filename.isEmpty) return '';
+    if (filename.startsWith('http')) return normalizeUrl(filename);
+    if (filename.startsWith('/uploads/') || filename.startsWith('uploads/')) {
+      final cleanPath = filename.startsWith('/') ? filename : '/$filename';
+      return '$serverOrigin$cleanPath';
+    }
+    if (filename.startsWith('/scheduled/') ||
+        filename.startsWith('scheduled/')) {
+      final cleanPath = filename.startsWith('/') ? filename : '/$filename';
+      return '$serverOrigin/uploads$cleanPath';
+    }
+    return '$serverOrigin/uploads/scheduled/$filename';
+  }
+
+  /// Scheduled content video thumbnail URL (uploads/scheduled/thumbnails/)
+  static String scheduledThumbnailUrl(String? filename) {
+    if (filename == null || filename.isEmpty) return '';
+    if (filename.startsWith('http')) return normalizeUrl(filename);
+    if (filename.startsWith('/uploads/') || filename.startsWith('uploads/')) {
+      final cleanPath = filename.startsWith('/') ? filename : '/$filename';
+      return '$serverOrigin$cleanPath';
+    }
+    if (filename.startsWith('/thumbnails/') ||
+        filename.startsWith('thumbnails/')) {
+      final cleanPath = filename.startsWith('/')
+          ? filename.substring(1)
+          : filename;
+      return '$serverOrigin/uploads/scheduled/$cleanPath';
+    }
+    if (filename.startsWith('/scheduled/') ||
+        filename.startsWith('scheduled/')) {
+      final cleanPath = filename.startsWith('/') ? filename : '/$filename';
+      return '$serverOrigin/uploads$cleanPath';
+    }
+    return '$serverOrigin/uploads/scheduled/thumbnails/$filename';
+  }
+
   /// Page post media URL (uploads/pages/posts/)
   static String pagePostMediaUrl(String? filename) {
     if (filename == null || filename.isEmpty) return '';
@@ -102,16 +141,38 @@ class ApiConstants {
     String? thumbnailUrl,
     String type = 'image',
     String? mediaBaseDir,
+    bool isScheduled = false,
   }) {
-    final isVideo = type == 'video' ||
-        const ['mp4', 'mov', 'avi', 'mkv', 'webm']
-            .any((ext) => url.toLowerCase().endsWith('.$ext'));
+    final normalizedType = type.toLowerCase();
+    final isVideo =
+        normalizedType == 'video' ||
+        const [
+          'mp4',
+          'mov',
+          'avi',
+          'mkv',
+          'webm',
+        ].any((ext) => url.toLowerCase().endsWith('.$ext'));
     // For videos, prefer thumbnail if available
     if (isVideo && thumbnailUrl != null && thumbnailUrl.isNotEmpty) {
+      if (isScheduled) return scheduledThumbnailUrl(thumbnailUrl);
       if (mediaBaseDir == 'reels') return reelThumbnailUrl(thumbnailUrl);
       return videoThumbnailUrl(thumbnailUrl);
     }
     // For images or video without thumbnail, use media URL
+    if (isScheduled) return scheduledMediaUrl(url);
+    if (mediaBaseDir == 'reels') return reelMediaUrl(url);
+    if (mediaBaseDir == 'story') return storyMediaUrl(url);
+    return postMediaUrl(url);
+  }
+
+  /// Returns the raw media URL (not thumbnail) for full-screen viewing.
+  static String contentMediaFullUrl({
+    required String url,
+    String? mediaBaseDir,
+    bool isScheduled = false,
+  }) {
+    if (isScheduled) return scheduledMediaUrl(url);
     if (mediaBaseDir == 'reels') return reelMediaUrl(url);
     if (mediaBaseDir == 'story') return storyMediaUrl(url);
     return postMediaUrl(url);
@@ -162,8 +223,7 @@ class ApiConstants {
   static String todos(String pageId) => '/business-suite/$pageId/todos';
   static String todoById(String pageId, String todoId) =>
       '/business-suite/$pageId/todos/$todoId';
-  static String insights(String pageId) =>
-      '/business-suite/$pageId/insights';
+  static String insights(String pageId) => '/business-suite/$pageId/insights';
   static String insightsAudience(String pageId) =>
       '/business-suite/$pageId/insights/audience';
   static String insightsContent(String pageId) =>
@@ -200,8 +260,7 @@ class ApiConstants {
   static const String deliveryStatus = '/campaigns-v2/delivery-status';
   static String analytics(String campaignId) =>
       '/campaigns-v2/analytics/$campaignId';
-  static String adAnalytics(String adId) =>
-      '/campaigns-v2/analytics/ad/$adId';
+  static String adAnalytics(String adId) => '/campaigns-v2/analytics/ad/$adId';
   static String campaignDemographics(String campaignId) =>
       '/campaigns-v2/analytics/$campaignId/demographics';
   static const String beacon = '/campaigns-v2/beacon';
@@ -260,8 +319,7 @@ class ApiConstants {
       '/get-all-comments-direct-post/$postId';
   static const String sendComment = '/save-user-comment-by-post';
   static const String replyComment = '/reply-comment-by-direct-post';
-  static const String reactOnComment =
-      '/save-comment-reaction-of-direct-post';
+  static const String reactOnComment = '/save-comment-reaction-of-direct-post';
   static String reactionUserList(String postId) =>
       '/reaction-user-lists-of-direct-post/$postId';
   static const String deleteComment = '/delete-single-comment';

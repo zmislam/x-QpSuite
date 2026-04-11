@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../../../core/constants/api_constants.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../features/page_switcher/providers/managed_pages_provider.dart';
 import '../../../shared/widgets/empty_state.dart';
@@ -150,6 +151,16 @@ class _StoriesTabState extends State<StoriesTab> {
   }
 }
 
+String _resolveMediaUrl(ContentMedia media) {
+  final url = media.url;
+  if (url.startsWith('http')) return url;
+  final dir = media.mediaBaseDir;
+  if (dir != null && dir.isNotEmpty) {
+    return '${ApiConstants.serverOrigin}/uploads/$dir/$url';
+  }
+  return '${ApiConstants.serverOrigin}/uploads/$url';
+}
+
 class _StoryCard extends StatelessWidget {
   final ContentItem item;
   const _StoryCard({required this.item});
@@ -168,7 +179,7 @@ class _StoryCard extends StatelessWidget {
               borderRadius: BorderRadius.circular(8),
               child: item.media.isNotEmpty
                   ? Image.network(
-                      item.media.first.url,
+                      _resolveMediaUrl(item.media.first),
                       width: 60,
                       height: 80,
                       fit: BoxFit.cover,

@@ -6,6 +6,7 @@ import '../../../core/services/api_service.dart';
 import '../models/content_models.dart';
 
 enum ContentFilter { all, published, scheduled }
+
 enum ContentTypeFilter { all, post, reel, story }
 
 class ContentProvider extends ChangeNotifier {
@@ -27,7 +28,7 @@ class ContentProvider extends ChangeNotifier {
   bool _isTypeLoading = false;
 
   // Posts filter state
-  String _postsFilter = 'Published'; // Published | Scheduled | Drafts
+  String _postsFilter = 'Published & Scheduled'; // Published & Scheduled | Published | Scheduled | Drafts
 
   // Calendar
   Map<String, CalendarDay> _calendarDays = {};
@@ -45,6 +46,9 @@ class ContentProvider extends ChangeNotifier {
   int _failedCount = 0;
   int _cancelledCount = 0;
   Timer? _pollTimer;
+
+  // Optimistic uploads shown immediately in Content screens.
+  final List<PendingContentUpload> _pendingUploads = [];
 
   ContentProvider({required ApiService api}) : _api = api;
 
@@ -74,10 +78,115 @@ class ContentProvider extends ChangeNotifier {
   int get scheduledCount => _scheduledCount;
   int get failedCount => _failedCount;
   int get cancelledCount => _cancelledCount;
+  List<PendingContentUpload> get pendingUploads => _pendingUploads;
 
-  void setPostsFilter(String filter) {
+  List<PendingContentUpload> pendingNowUploadsForPage(String pageId) {
+    return _pendingUploads
+        .where((u) => u.pageId == pageId && u.isNow)
+        .toList(growable: false);
+  }
+
+  List<PendingContentUpload> pendingScheduledUploadsForPage(String pageId) {
+    return _pendingUploads
+        .where((u) => u.pageId == pageId && u.isSchedule)
+        .toList(growable: false);
+  }
+
+  void setPostsFilter(String filter, {String? pageId}) {
+    if (_postsFilter == filter) return;
     _postsFilter = filter;
     notifyListeners();
+    if (pageId != null && filter != 'Drafts') {
+      // Map UI filter to API type param
+      switch (filter) {
+        case 'Published':
+          _filter = ContentFilter.published;
+          break;
+        case 'Scheduled':
+          _filter = ContentFilter.scheduled;
+          break;
+        default:
+          _filter = ContentFilter.all;
+      }
+      _items = [];
+      _page = 1;
+      _hasMore = true;
+      fetchContent(pageId);
+    }
+  }
+
+  String addPendingUpload({
+    required String pageId,
+    required String contentType,
+    required String postMode,
+    required String text,
+    required List<PendingUploadMedia> media,
+    DateTime? scheduledFor,
+  }) {
+    final id =
+        'pending_${DateTime.now().microsecondsSinceEpoch}_${_pendingUploads.length + 1}';
+    _pendingUploads.insert(
+      0,
+      PendingContentUpload(
+        id: id,
+        pageId: pageId,
+        contentType: contentType,
+        postMode: postMode,
+        text: text,
+        media: media,
+        createdAt: DateTime.now(),
+        scheduledFor: scheduledFor,
+      ),
+    );
+    notifyListeners();
+    return id;
+  }
+
+  void updatePendingUploadStatus(
+    String uploadId, {
+    required String status,
+    String? errorMessage,
+  }) {
+    final index = _pendingUploads.indexWhere((u) => u.id == uploadId);
+    if (index == -1) return;
+
+    final current = _pendingUploads[index];
+    _pendingUploads[index] = PendingContentUpload(
+      id: current.id,
+      pageId: current.pageId,
+      contentType: current.contentType,
+      postMode: current.postMode,
+      text: current.text,
+      media: current.media,
+      createdAt: current.createdAt,
+      scheduledFor: current.scheduledFor,
+      status: status,
+      errorMessage: errorMessage,
+    );
+    notifyListeners();
+  }
+
+  void markPendingUploadFailed(String uploadId, String message) {
+    updatePendingUploadStatus(
+      uploadId,
+      status: 'Failed',
+      errorMessage: message,
+    );
+  }
+
+  void markPendingUploadCompleted(String uploadId, {required String status}) {
+    updatePendingUploadStatus(uploadId, status: status);
+
+    // Keep success state visible briefly, then let real server data take over.
+    Timer(const Duration(seconds: 2), () => removePendingUpload(uploadId));
+  }
+
+  void removePendingUpload(String uploadId) {
+    final before = _pendingUploads.length;
+    _pendingUploads.removeWhere((u) => u.id == uploadId);
+    if (_pendingUploads.length != before) {
+      notifyListeners();
+    }
   }
 
   void setFilter(ContentFilter f, String pageId) {
@@ -105,7 +214,6 @@ class ContentProvider extends ChangeNotifier {
       _page++;
     } else {
       _page = 1;
-      _items = [];
       _hasMore = true;
     }
 
@@ -130,8 +238,10 @@ class ContentProvider extends ChangeNotifier {
       );
 
       if (res.data['success'] == true) {
-        final list = (res.data['data'] as List?)
+        final list =
+            (res.data['data'] as List?)
                 ?.map((e) => ContentItem.fromJson(e))
+                .where((item) => item.id.isNotEmpty && (item.displayText.isNotEmpty || item.media.isNotEmpty))
                 .toList() ??
             [];
         if (loadMore) {
@@ -200,26 +310,57 @@ class ContentProvider extends ChangeNotifier {
           data: {},
         );
         if (res.data['success'] == true) {
+          // Server publishes asynchronously — poll until it completes
+          _startPublishPoll(pageId);
           return true;
         }
         // If server says "already publishing/published", treat as success
         if (res.statusCode == 404) return true;
         return false;
       } catch (e) {
-        final isRetryable = e is DioException &&
+        final isRetryable =
+            e is DioException &&
             (e.type == DioExceptionType.connectionTimeout ||
-             e.type == DioExceptionType.sendTimeout ||
-             e.type == DioExceptionType.receiveTimeout ||
-             e.type == DioExceptionType.connectionError ||
-             (e.response?.statusCode != null && e.response!.statusCode! >= 500));
+                e.type == DioExceptionType.sendTimeout ||
+                e.type == DioExceptionType.receiveTimeout ||
+                e.type == DioExceptionType.connectionError ||
+                (e.response?.statusCode != null &&
+                    e.response!.statusCode! >= 500));
         if (!isRetryable || attempt == maxRetries) {
-          debugPrint('[ContentProvider] publishNow failed after $attempt attempts: $e');
+          debugPrint(
+            '[ContentProvider] publishNow failed after $attempt attempts: $e',
+          );
           return false;
         }
         await Future.delayed(Duration(seconds: 1 << (attempt - 1)));
       }
     }
     return false;
+  }
+
+  /// Poll both content lists every 3s for up to 30s after publish-now,
+  /// so the UI transitions from "Publishing" → "Published".
+  Timer? _publishPollTimer;
+  int _publishPollCount = 0;
+
+  void _startPublishPoll(String pageId) {
+    _publishPollTimer?.cancel();
+    _publishPollCount = 0;
+    _publishPollTimer = Timer.periodic(const Duration(seconds: 3), (_) async {
+      _publishPollCount++;
+      // Refresh both lists so every screen sees the update
+      await Future.wait([
+        fetchContent(pageId),
+        fetchScheduledPosts(pageId),
+      ]);
+      // Stop when no more "Publishing" items or after 10 polls (~30s)
+      final stillPublishing = _items.any((i) => i.status == 'Publishing') ||
+          _scheduledItems.any((i) => i.status == 'Publishing');
+      if (!stillPublishing || _publishPollCount >= 10) {
+        _publishPollTimer?.cancel();
+        _publishPollTimer = null;
+      }
+    });
   }
 
   /// Fetch content filtered by type: 'Reel', 'Story', 'Mention', 'Photo'
@@ -240,8 +381,10 @@ class ContentProvider extends ChangeNotifier {
       );
 
       if (res.data['success'] == true) {
-        final list = (res.data['data'] as List?)
+        final list =
+            (res.data['data'] as List?)
                 ?.map((e) => ContentItem.fromJson(e))
+                .where((item) => item.id.isNotEmpty && (item.displayText.isNotEmpty || item.media.isNotEmpty))
                 .toList() ??
             [];
         switch (type) {
@@ -278,15 +421,16 @@ class ContentProvider extends ChangeNotifier {
     fetchScheduledPosts(pageId);
   }
 
-  Future<void> fetchScheduledPosts(String pageId,
-      {bool loadMore = false}) async {
+  Future<void> fetchScheduledPosts(
+    String pageId, {
+    bool loadMore = false,
+  }) async {
     if (_isScheduledLoading) return;
     if (loadMore) {
       if (!_scheduledHasMore) return;
       _scheduledPage++;
     } else {
       _scheduledPage = 1;
-      _scheduledItems = [];
       _scheduledHasMore = true;
     }
 
@@ -294,10 +438,7 @@ class ContentProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
-      final params = <String, dynamic>{
-        'page': _scheduledPage,
-        'limit': 20,
-      };
+      final params = <String, dynamic>{'page': _scheduledPage, 'limit': 20};
       if (_scheduledStatusFilter != 'all') {
         params['status'] = _scheduledStatusFilter;
       }
@@ -308,8 +449,12 @@ class ContentProvider extends ChangeNotifier {
       );
 
       if (res.data['success'] == true) {
-        final list = (res.data['data'] as List?)
-                ?.map((e) => ContentItem.fromJson({...e, '_source': 'scheduled'}))
+        final list =
+            (res.data['data'] as List?)
+                ?.map(
+                  (e) => ContentItem.fromJson({...e, '_source': 'scheduled'}),
+                )
+                .where((item) => item.id.isNotEmpty)
                 .toList() ??
             [];
         if (loadMore) {
@@ -370,14 +515,12 @@ class ContentProvider extends ChangeNotifier {
     try {
       final res = await _api.post(
         ApiConstants.publishStoryNow(pageId),
-        data: {
-          'text': text,
-          'story_meta': storyMeta,
-        },
+        data: {'text': text, 'story_meta': storyMeta},
       );
       if (res.data['success'] == true) {
         fetchContent(pageId);
-        return res.data['data'] as Map<String, dynamic>?;
+        // API returns story_id/post_id at top level, not inside 'data'
+        return res.data as Map<String, dynamic>;
       }
       return null;
     } catch (_) {
@@ -398,23 +541,49 @@ class ContentProvider extends ChangeNotifier {
           formData: formData,
         );
         if (res.data['success'] == true) {
-          return (res.data['data'] as List)
-              .map((m) => {
-                    'url': m['url'] as String,
-                    'type': m['type'] as String,
-                  })
-              .toList();
+          return (res.data['data'] as List).map((m) {
+            final item = <String, String>{
+              'url': (m['url'] ?? '').toString(),
+              'type': (m['type'] ?? 'image').toString(),
+            };
+
+            // Preserve thumbnail metadata for scheduled videos.
+            // Without this, video previews break in scheduled/content lists.
+            final thumb =
+                (m['thumbnail_url'] ??
+                        m['video_thumbnail'] ??
+                        m['thumbnail'] ??
+                        '')
+                    .toString();
+            if (thumb.isNotEmpty) {
+              item['thumbnail_url'] = thumb;
+            }
+
+            return item;
+          }).toList();
         }
         return null;
       } catch (e) {
-        final isRetryable = e is DioException &&
+        if (e is DioException) {
+          debugPrint(
+            '[ContentProvider] uploadMedia attempt $attempt: '
+            'status=${e.response?.statusCode} '
+            'body=${e.response?.data} '
+            'type=${e.type}',
+          );
+        }
+        final isRetryable =
+            e is DioException &&
             (e.type == DioExceptionType.connectionTimeout ||
-             e.type == DioExceptionType.sendTimeout ||
-             e.type == DioExceptionType.receiveTimeout ||
-             e.type == DioExceptionType.connectionError ||
-             (e.response?.statusCode != null && e.response!.statusCode! >= 500));
+                e.type == DioExceptionType.sendTimeout ||
+                e.type == DioExceptionType.receiveTimeout ||
+                e.type == DioExceptionType.connectionError ||
+                (e.response?.statusCode != null &&
+                    e.response!.statusCode! >= 500));
         if (!isRetryable || attempt == maxRetries) {
-          debugPrint('[ContentProvider] uploadMedia failed after $attempt attempts: $e');
+          debugPrint(
+            '[ContentProvider] uploadMedia failed after $attempt attempts: $e',
+          );
           return null;
         }
         // Exponential backoff: 1s, 2s, 4s
@@ -438,20 +607,22 @@ class ContentProvider extends ChangeNotifier {
           formData: formData,
         );
         if (res.data['success'] == true) {
-          return (res.data['data'] as List)
-              .map((f) => f.toString())
-              .toList();
+          return (res.data['data'] as List).map((f) => f.toString()).toList();
         }
         return null;
       } catch (e) {
-        final isRetryable = e is DioException &&
+        final isRetryable =
+            e is DioException &&
             (e.type == DioExceptionType.connectionTimeout ||
-             e.type == DioExceptionType.sendTimeout ||
-             e.type == DioExceptionType.receiveTimeout ||
-             e.type == DioExceptionType.connectionError ||
-             (e.response?.statusCode != null && e.response!.statusCode! >= 500));
+                e.type == DioExceptionType.sendTimeout ||
+                e.type == DioExceptionType.receiveTimeout ||
+                e.type == DioExceptionType.connectionError ||
+                (e.response?.statusCode != null &&
+                    e.response!.statusCode! >= 500));
         if (!isRetryable || attempt == maxRetries) {
-          debugPrint('[ContentProvider] uploadPostMedia failed after $attempt attempts: $e');
+          debugPrint(
+            '[ContentProvider] uploadPostMedia failed after $attempt attempts: $e',
+          );
           return null;
         }
         await Future.delayed(Duration(seconds: 1 << (attempt - 1)));
@@ -484,17 +655,19 @@ class ContentProvider extends ChangeNotifier {
     }
   }
 
-  /// Start auto-polling scheduled posts when items are near-expiry
+  /// Start auto-polling when items are near-expiry or still publishing
   void startPolling(String pageId) {
     stopPolling();
     _pollTimer = Timer.periodic(const Duration(seconds: 10), (_) {
+      final hasPublishing = _items.any((i) => i.status == 'Publishing') ||
+          _scheduledItems.any((i) => i.status == 'Publishing');
       final hasNearExpiry = _scheduledItems.any((item) {
-        if (item.status == 'Publishing') return true;
         if (item.scheduledFor == null) return false;
         final diff = item.scheduledFor!.difference(DateTime.now());
         return diff.inMinutes <= 2 && diff.inSeconds > 0;
       });
-      if (hasNearExpiry) {
+      if (hasPublishing || hasNearExpiry) {
+        fetchContent(pageId);
         fetchScheduledPosts(pageId);
       }
     });
@@ -507,6 +680,7 @@ class ContentProvider extends ChangeNotifier {
 
   @override
   void dispose() {
+    _publishPollTimer?.cancel();
     stopPolling();
     super.dispose();
   }

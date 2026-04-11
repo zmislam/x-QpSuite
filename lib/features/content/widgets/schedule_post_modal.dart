@@ -1,16 +1,18 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:http_parser/http_parser.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 import 'package:uuid/uuid.dart';
 import '../../../core/constants/api_constants.dart';
-import '../../../core/theme/app_colors.dart';
 import '../../../features/page_switcher/providers/managed_pages_provider.dart';
 import '../../../features/posts/providers/post_provider.dart';
 import '../models/content_models.dart';
 import '../providers/content_provider.dart';
+import 'local_video_preview.dart';
 import 'quick_schedule_picker.dart';
 import 'story_creator_panel.dart';
 
@@ -138,8 +140,14 @@ class _SchedulePostModalState extends State<SchedulePostModal> {
 
   // ─── Helper: detect if XFile is a video ────────
   bool _isVideoFile(XFile file) {
-    final ext = file.path.split('.').last.toLowerCase();
-    return ['mp4', 'mov', 'avi', 'webm', 'mkv'].contains(ext);
+    final name = file.name.toLowerCase();
+    final path = file.path.toLowerCase();
+    final mime = (file.mimeType ?? '').toLowerCase();
+
+    if (mime.startsWith('video/')) return true;
+
+    const videoExts = ['.mp4', '.mov', '.avi', '.webm', '.mkv', '.m4v'];
+    return videoExts.any((ext) => name.endsWith(ext) || path.endsWith(ext));
   }
 
   // ─── Media picking ──────────────────────────────
@@ -184,165 +192,292 @@ class _SchedulePostModalState extends State<SchedulePostModal> {
     }
 
     final contentProvider = context.read<ContentProvider>();
+    final postProvider = context.read<PostProvider>();
+    final messenger = ScaffoldMessenger.maybeOf(context);
 
+    final text = _contentType == 'Story'
+        ? _storyText.trim()
+        : _textController.text.trim();
+    final filesToUpload = (_contentType == 'Story' && _storyFile != null)
+        ? <XFile>[_storyFile!]
+        : List<XFile>.from(_mediaFiles);
+    final scheduledFor = _postMode == 'now'
+        ? DateTime.now().add(const Duration(minutes: 1))
+        : _fullScheduleDate!;
+
+    final pendingMedia = filesToUpload
+        .map(
+          (file) => PendingUploadMedia(file: file, isVideo: _isVideoFile(file)),
+        )
+        .toList(growable: false);
+
+    final pendingId = contentProvider.addPendingUpload(
+      pageId: pageId,
+      contentType: _contentType,
+      postMode: _postMode,
+      text: text,
+      media: pendingMedia,
+      scheduledFor: _postMode == 'schedule' ? scheduledFor : null,
+    );
+
+    // Close instantly and continue upload/schedule in background.
+    Navigator.pop(context, true);
+    messenger?.showSnackBar(
+      SnackBar(
+        content: Text(
+          _postMode == 'now'
+              ? 'Posting in background...'
+              : 'Scheduling in background...',
+        ),
+        backgroundColor: const Color(0xFF307777),
+      ),
+    );
+
+    unawaited(
+      _runQueuedSubmission(
+        contentProvider: contentProvider,
+        postProvider: postProvider,
+        pageId: pageId,
+        pendingId: pendingId,
+        contentType: _contentType,
+        postMode: _postMode,
+        text: text,
+        filesToUpload: filesToUpload,
+        storyMeta: _storyMeta,
+        scheduledFor: scheduledFor,
+      ),
+    );
+  }
+
+  Future<void> _runQueuedSubmission({
+    required ContentProvider contentProvider,
+    required PostProvider postProvider,
+    required String pageId,
+    required String pendingId,
+    required String contentType,
+    required String postMode,
+    required String text,
+    required List<XFile> filesToUpload,
+    required StoryMeta? storyMeta,
+    required DateTime scheduledFor,
+  }) async {
     try {
-      // Handle "Post Now" for text stories (instant, no cron)
-      if (_postMode == 'now' &&
-          _contentType == 'Story' &&
-          _storyMeta != null &&
-          _storyFile == null) {
-        await contentProvider.publishStoryNow(
-          pageId,
-          text: _storyText,
-          storyMeta: _storyMeta!.toMap(),
+      // Keep instant text-story publish path, but run it asynchronously.
+      if (postMode == 'now' &&
+          contentType == 'Story' &&
+          storyMeta != null &&
+          filesToUpload.isEmpty) {
+        contentProvider.updatePendingUploadStatus(
+          pendingId,
+          status: 'Publishing',
         );
-        if (mounted) {
-          Navigator.pop(context, true);
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Story published!'),
-              backgroundColor: Color(0xFF307777),
-            ),
-          );
+
+        final story = await contentProvider.publishStoryNow(
+          pageId,
+          text: text,
+          storyMeta: storyMeta.toMap(),
+        );
+        if (story == null) {
+          throw Exception('Failed to publish story.');
         }
+
+        await Future.wait([
+          postProvider.fetchPagePosts(pageId, refresh: true),
+          contentProvider.fetchContent(pageId),
+        ]);
+
+        contentProvider.markPendingUploadCompleted(
+          pendingId,
+          status: 'Published',
+        );
         return;
       }
 
-      // Upload media files first (if any)
       List<Map<String, String>> mediaList = [];
-
-      // For Story with photo capture
-      final filesToUpload = _contentType == 'Story' && _storyFile != null
-          ? [_storyFile!]
-          : _mediaFiles;
-
       if (filesToUpload.isNotEmpty) {
-        // Try batch upload first
-        final formData = FormData();
-        for (final file in filesToUpload) {
-          final bytes = await file.readAsBytes();
-          formData.files.add(MapEntry(
-            'media',
-            MultipartFile.fromBytes(bytes, filename: file.name),
-          ));
-        }
-        var uploaded = await contentProvider.uploadMedia(pageId, formData);
+        contentProvider.updatePendingUploadStatus(
+          pendingId,
+          status: 'Uploading',
+        );
 
-        // If batch failed and multiple files, fall back to uploading one at a time
-        if (uploaded == null && filesToUpload.length > 1) {
-          final List<Map<String, String>> individualResults = [];
-          bool allSucceeded = true;
-          for (final file in filesToUpload) {
-            final singleForm = FormData();
-            final bytes = await file.readAsBytes();
-            singleForm.files.add(MapEntry(
-              'media',
-              MultipartFile.fromBytes(bytes, filename: file.name),
-            ));
-            final singleResult = await contentProvider.uploadMedia(pageId, singleForm);
-            if (singleResult != null) {
-              individualResults.addAll(singleResult);
-            } else {
-              allSucceeded = false;
-              break;
-            }
-          }
-          if (allSucceeded && individualResults.isNotEmpty) {
-            uploaded = individualResults;
-          }
-        }
+        final uploaded = await _uploadFilesWithFallback(
+          contentProvider,
+          pageId,
+          filesToUpload,
+        );
 
         if (uploaded == null) {
-          setState(() {
-            _isSubmitting = false;
-            _error = 'Failed to upload media. Please try again.';
-          });
-          return;
+          throw Exception('Failed to upload media. Please try again.');
         }
         mediaList = uploaded;
       }
 
-      // Build schedule payload
-      final text = _contentType == 'Story'
-          ? _storyText
-          : _textController.text.trim();
-
-      DateTime scheduledFor;
-      if (_postMode == 'now') {
-        // Schedule 1 minute ahead for cron to pick up
-        scheduledFor = DateTime.now().add(const Duration(minutes: 1));
-      } else {
-        scheduledFor = _fullScheduleDate!;
-      }
+      contentProvider.updatePendingUploadStatus(
+        pendingId,
+        status: postMode == 'now' ? 'Publishing' : 'Scheduling',
+      );
 
       final payload = <String, dynamic>{
-        'content_type': _contentType,
+        'content_type': contentType,
         'scheduled_for': scheduledFor.toUtc().toIso8601String(),
         'timezone': DateTime.now().timeZoneName,
         'idempotency_key': const Uuid().v4(),
       };
       if (text.isNotEmpty) payload['text'] = text;
       if (mediaList.isNotEmpty) payload['media'] = mediaList;
-      if (_contentType == 'Story' && _storyMeta != null) {
-        payload['story_meta'] = _storyMeta!.toMap();
+      if (contentType == 'Story' && storyMeta != null) {
+        payload['story_meta'] = storyMeta.toMap();
       }
 
       final result = await contentProvider.scheduleContent(
         pageId,
         data: payload,
-        skipRefresh: _postMode == 'now',
+        skipRefresh: true,
       );
 
-      if (result == null && mounted) {
-        setState(() {
-          _isSubmitting = false;
-          _error = 'Schedule request failed. Please try again.';
-        });
-        return;
+      if (result == null) {
+        throw Exception('Schedule request failed. Please try again.');
       }
 
-      // For "Post Now": trigger immediate publish instead of waiting for cron
-      if (_postMode == 'now' && result != null) {
+      if (postMode == 'now') {
         final scheduleId = result['_id'] as String?;
         if (scheduleId != null) {
           await contentProvider.publishNow(pageId, scheduleId);
         }
-        // Always refresh posts — even if publishNow timed out the backend
-        // likely completed; if not, the cron will handle it within 15s
-        if (mounted) {
-          await context.read<PostProvider>().fetchPagePosts(pageId, refresh: true);
-        }
+
+        await Future.wait([
+          postProvider.fetchPagePosts(pageId, refresh: true),
+          contentProvider.fetchContent(pageId),
+          contentProvider.fetchScheduledPosts(pageId),
+        ]);
+
+        contentProvider.markPendingUploadCompleted(
+          pendingId,
+          status: 'Published',
+        );
+        return;
       }
 
-      // Refresh content lists after everything is done
-      contentProvider.fetchContent(pageId);
-      contentProvider.fetchScheduledPosts(pageId);
+      await contentProvider.fetchScheduledPosts(pageId);
+      contentProvider.markPendingUploadCompleted(
+        pendingId,
+        status: 'Scheduled',
+      );
+    } catch (e) {
+      contentProvider.markPendingUploadFailed(
+        pendingId,
+        _errorMessageFromException(e),
+      );
+    }
+  }
 
-      if (mounted) {
-        Navigator.pop(context, true);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              _postMode == 'now'
-                  ? '${_contentType} published!'
-                  : '${_contentType} scheduled!',
+  Future<List<Map<String, String>>?> _uploadFilesWithFallback(
+    ContentProvider contentProvider,
+    String pageId,
+    List<XFile> filesToUpload,
+  ) async {
+    final formData = FormData();
+    for (final file in filesToUpload) {
+      final bytes = await file.readAsBytes();
+      // On web, XFile.name can be '' if name: wasn't passed to constructor
+      final fileName = file.name.isNotEmpty
+          ? file.name
+          : 'upload_${DateTime.now().millisecondsSinceEpoch}.png';
+      debugPrint('[Upload] file.name="${file.name}" fileName="$fileName" '
+          'file.mimeType="${file.mimeType}" bytes.length=${bytes.length}');
+      final mpFile = MultipartFile.fromBytes(
+        bytes,
+        filename: fileName,
+        contentType: _inferMediaType(file),
+      );
+      debugPrint('[Upload] MultipartFile filename="${mpFile.filename}" '
+          'contentType=${mpFile.contentType} length=${mpFile.length}');
+      formData.files.add(MapEntry('media', mpFile));
+    }
+    debugPrint('[Upload] FormData files=${formData.files.length} '
+        'boundary=${formData.boundary}');
+
+    var uploaded = await contentProvider.uploadMedia(pageId, formData);
+
+    // If batch failed and multiple files, fall back to one-by-one upload.
+    if (uploaded == null && filesToUpload.length > 1) {
+      final List<Map<String, String>> individualResults = [];
+      bool allSucceeded = true;
+
+      for (final file in filesToUpload) {
+        final singleForm = FormData();
+        final bytes = await file.readAsBytes();
+        final fallbackName = file.name.isNotEmpty
+            ? file.name
+            : 'upload_${DateTime.now().millisecondsSinceEpoch}.png';
+        singleForm.files.add(
+          MapEntry(
+            'media',
+            MultipartFile.fromBytes(
+              bytes,
+              filename: fallbackName,
+              contentType: _inferMediaType(file),
             ),
-            backgroundColor: const Color(0xFF307777),
           ),
         );
-      }
-    } catch (e) {
-      if (mounted) {
-        String msg = 'Failed to schedule. Please try again.';
-        if (e is DioException && e.response?.data is Map) {
-          msg = (e.response!.data['error'] ?? e.response!.data['message'] ?? msg).toString();
+
+        final singleResult = await contentProvider.uploadMedia(
+          pageId,
+          singleForm,
+        );
+        if (singleResult != null) {
+          individualResults.addAll(singleResult);
+        } else {
+          allSucceeded = false;
+          break;
         }
-        setState(() {
-          _isSubmitting = false;
-          _error = msg;
-        });
+      }
+
+      if (allSucceeded && individualResults.isNotEmpty) {
+        uploaded = individualResults;
       }
     }
+
+    return uploaded;
+  }
+
+  String _errorMessageFromException(Object error) {
+    if (error is DioException && error.response?.data is Map) {
+      final data = error.response!.data as Map;
+      final message = (data['error'] ?? data['message'])?.toString();
+      if (message != null && message.isNotEmpty) {
+        return message;
+      }
+    }
+
+    final message = error.toString();
+    if (message.startsWith('Exception: ')) {
+      return message.substring('Exception: '.length);
+    }
+    return 'Failed to process content. Please try again.';
+  }
+
+  // ─── Infer MIME type from XFile for multipart uploads ──
+  MediaType _inferMediaType(XFile file) {
+    final name = file.name.toLowerCase();
+    // Check explicit mimeType first (set by story capture)
+    final mime = file.mimeType ?? '';
+    if (mime.isNotEmpty) {
+      final parts = mime.split('/');
+      if (parts.length == 2) return MediaType(parts[0], parts[1]);
+    }
+    // Infer from extension
+    if (name.endsWith('.png')) return MediaType('image', 'png');
+    if (name.endsWith('.jpg') || name.endsWith('.jpeg')) {
+      return MediaType('image', 'jpeg');
+    }
+    if (name.endsWith('.gif')) return MediaType('image', 'gif');
+    if (name.endsWith('.webp')) return MediaType('image', 'webp');
+    if (name.endsWith('.mp4')) return MediaType('video', 'mp4');
+    if (name.endsWith('.mov')) return MediaType('video', 'quicktime');
+    if (name.endsWith('.webm')) return MediaType('video', 'webm');
+    // Default to octet-stream
+    return MediaType('application', 'octet-stream');
   }
 
   // ─── Content type switch handler ────────────────
@@ -395,13 +530,20 @@ class _SchedulePostModalState extends State<SchedulePostModal> {
                     ),
                     child: Row(
                       children: [
-                        Icon(Icons.error_outline,
-                            size: 16, color: Colors.red[700]),
+                        Icon(
+                          Icons.error_outline,
+                          size: 16,
+                          color: Colors.red[700],
+                        ),
                         const SizedBox(width: 8),
                         Expanded(
-                          child: Text(_error!,
-                              style: TextStyle(
-                                  fontSize: 13, color: Colors.red[700])),
+                          child: Text(
+                            _error!,
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: Colors.red[700],
+                            ),
+                          ),
                         ),
                       ],
                     ),
@@ -416,8 +558,7 @@ class _SchedulePostModalState extends State<SchedulePostModal> {
                         setState(() => _storyMeta = meta),
                     onStoryFileChanged: (file) =>
                         setState(() => _storyFile = file),
-                    onTextChanged: (text) =>
-                        setState(() => _storyText = text),
+                    onTextChanged: (text) => setState(() => _storyText = text),
                   )
                 else ...[
                   // Reel video upload area
@@ -432,7 +573,8 @@ class _SchedulePostModalState extends State<SchedulePostModal> {
                     maxLines: _mediaFiles.isNotEmpty ? 3 : 6,
                     maxLength: 10000,
                     decoration: InputDecoration(
-                      hintText: 'What\'s on your mind, ${page?.pageName ?? ''}?',
+                      hintText:
+                          'What\'s on your mind, ${page?.pageName ?? ''}?',
                       border: InputBorder.none,
                       hintStyle: TextStyle(
                         fontSize: 16,
@@ -476,19 +618,14 @@ class _SchedulePostModalState extends State<SchedulePostModal> {
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
         color: Colors.white,
-        border: Border(
-          bottom: BorderSide(color: Colors.grey[200]!),
-        ),
+        border: Border(bottom: BorderSide(color: Colors.grey[200]!)),
       ),
       child: Row(
         children: [
           const Spacer(),
           Text(
             _modalTitle,
-            style: const TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-            ),
+            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
           ),
           const Spacer(),
           GestureDetector(
@@ -515,8 +652,7 @@ class _SchedulePostModalState extends State<SchedulePostModal> {
         CircleAvatar(
           radius: 20,
           backgroundImage: page?.profilePic != null
-              ? NetworkImage(
-                  ApiConstants.pageProfileUrl(page.profilePic))
+              ? NetworkImage(ApiConstants.pageProfileUrl(page.profilePic))
               : null,
           child: page?.profilePic == null
               ? const Icon(Icons.store, size: 20)
@@ -575,12 +711,9 @@ class _SchedulePostModalState extends State<SchedulePostModal> {
           child: GestureDetector(
             onTap: () => _onContentTypeChanged(type),
             child: Container(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               decoration: BoxDecoration(
-                color: isActive
-                    ? const Color(0xFF307777)
-                    : Colors.grey[100],
+                color: isActive ? const Color(0xFF307777) : Colors.grey[100],
                 borderRadius: BorderRadius.circular(20),
               ),
               child: Row(
@@ -644,8 +777,7 @@ class _SchedulePostModalState extends State<SchedulePostModal> {
           Icon(Icons.info_outline, size: 16, color: color),
           const SizedBox(width: 8),
           Expanded(
-            child: Text(hint,
-                style: TextStyle(fontSize: 12, color: color)),
+            child: Text(hint, style: TextStyle(fontSize: 12, color: color)),
           ),
         ],
       ),
@@ -657,23 +789,42 @@ class _SchedulePostModalState extends State<SchedulePostModal> {
     if (_mediaFiles.isNotEmpty) {
       return Stack(
         children: [
-          Container(
-            height: 180,
-            width: double.infinity,
-            decoration: BoxDecoration(
-              color: Colors.black,
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
+          ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: SizedBox(
+              height: 180,
+              width: double.infinity,
+              child: Stack(
+                fit: StackFit.expand,
                 children: [
-                  const Icon(Icons.videocam, color: Colors.white54, size: 40),
-                  const SizedBox(height: 8),
-                  Text(
-                    _mediaFiles.first.name,
-                    style: const TextStyle(color: Colors.white70, fontSize: 13),
-                    overflow: TextOverflow.ellipsis,
+                  LocalVideoPreview(file: _mediaFiles.first),
+                  Positioned(
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 8,
+                      ),
+                      decoration: const BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.bottomCenter,
+                          end: Alignment.topCenter,
+                          colors: [Colors.black54, Colors.transparent],
+                        ),
+                      ),
+                      child: Text(
+                        _mediaFiles.first.name,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
                   ),
                 ],
               ),
@@ -713,12 +864,18 @@ class _SchedulePostModalState extends State<SchedulePostModal> {
           children: [
             Icon(Icons.video_library, size: 40, color: Colors.grey[400]),
             const SizedBox(height: 8),
-            Text('Add Video',
-                style: TextStyle(
-                    fontWeight: FontWeight.w600, color: Colors.grey[700])),
+            Text(
+              'Add Video',
+              style: TextStyle(
+                fontWeight: FontWeight.w600,
+                color: Colors.grey[700],
+              ),
+            ),
             const SizedBox(height: 4),
-            Text('Upload a video for your reel',
-                style: TextStyle(fontSize: 12, color: Colors.grey[500])),
+            Text(
+              'Upload a video for your reel',
+              style: TextStyle(fontSize: 12, color: Colors.grey[500]),
+            ),
           ],
         ),
       ),
@@ -742,16 +899,19 @@ class _SchedulePostModalState extends State<SchedulePostModal> {
           ),
           itemCount: _mediaFiles.length,
           itemBuilder: (_, i) {
+            final isVideo = _isVideoFile(_mediaFiles[i]);
             return Stack(
               fit: StackFit.expand,
               children: [
                 ClipRRect(
                   borderRadius: BorderRadius.circular(8),
-                  child: kIsWeb
+                  child: isVideo
+                      ? LocalVideoPreview(file: _mediaFiles[i])
+                      : kIsWeb
                       ? Image.network(
                           _mediaFiles[i].path,
                           fit: BoxFit.cover,
-                          errorBuilder: (_, __, ___) => Container(
+                          errorBuilder: (_, error, stackTrace) => Container(
                             color: Colors.grey[200],
                             child: const Icon(Icons.image, color: Colors.grey),
                           ),
@@ -773,18 +933,24 @@ class _SchedulePostModalState extends State<SchedulePostModal> {
                         color: Colors.black54,
                         shape: BoxShape.circle,
                       ),
-                      child: const Icon(Icons.close,
-                          size: 14, color: Colors.white),
+                      child: const Icon(
+                        Icons.close,
+                        size: 14,
+                        color: Colors.white,
+                      ),
                     ),
                   ),
                 ),
                 // Video indicator
-                if (_isVideoFile(_mediaFiles[i]))
+                if (isVideo)
                   Positioned(
                     bottom: 4,
                     left: 4,
                     child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 6,
+                        vertical: 2,
+                      ),
                       decoration: BoxDecoration(
                         color: Colors.black54,
                         borderRadius: BorderRadius.circular(4),
@@ -794,7 +960,10 @@ class _SchedulePostModalState extends State<SchedulePostModal> {
                         children: [
                           Icon(Icons.videocam, size: 14, color: Colors.white),
                           SizedBox(width: 2),
-                          Text('Video', style: TextStyle(fontSize: 10, color: Colors.white)),
+                          Text(
+                            'Video',
+                            style: TextStyle(fontSize: 10, color: Colors.white),
+                          ),
                         ],
                       ),
                     ),
@@ -813,9 +982,7 @@ class _SchedulePostModalState extends State<SchedulePostModal> {
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: Colors.white,
-        border: Border(
-          top: BorderSide(color: Colors.grey[200]!),
-        ),
+        border: Border(top: BorderSide(color: Colors.grey[200]!)),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -832,35 +999,47 @@ class _SchedulePostModalState extends State<SchedulePostModal> {
                 children: [
                   const Text(
                     'Add to your post',
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                    ),
+                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
                   ),
                   const Spacer(),
                   IconButton(
-                    icon: Icon(Icons.photo_library,
-                        color: Colors.green[600], size: 22),
+                    icon: Icon(
+                      Icons.photo_library,
+                      color: Colors.green[600],
+                      size: 22,
+                    ),
                     onPressed: _pickMedia,
                     padding: EdgeInsets.zero,
-                    constraints:
-                        const BoxConstraints(minWidth: 36, minHeight: 36),
+                    constraints: const BoxConstraints(
+                      minWidth: 36,
+                      minHeight: 36,
+                    ),
                   ),
                   IconButton(
-                    icon: Icon(Icons.location_on,
-                        color: Colors.red[400], size: 22),
+                    icon: Icon(
+                      Icons.location_on,
+                      color: Colors.red[400],
+                      size: 22,
+                    ),
                     onPressed: () {},
                     padding: EdgeInsets.zero,
-                    constraints:
-                        const BoxConstraints(minWidth: 36, minHeight: 36),
+                    constraints: const BoxConstraints(
+                      minWidth: 36,
+                      minHeight: 36,
+                    ),
                   ),
                   IconButton(
-                    icon: Icon(Icons.emoji_emotions,
-                        color: Colors.amber[600], size: 22),
+                    icon: Icon(
+                      Icons.emoji_emotions,
+                      color: Colors.amber[600],
+                      size: 22,
+                    ),
                     onPressed: () {},
                     padding: EdgeInsets.zero,
-                    constraints:
-                        const BoxConstraints(minWidth: 36, minHeight: 36),
+                    constraints: const BoxConstraints(
+                      minWidth: 36,
+                      minHeight: 36,
+                    ),
                   ),
                 ],
               ),
@@ -931,9 +1110,11 @@ class _ModeChip extends StatelessWidget {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon,
-                size: 14,
-                color: isSelected ? Colors.white : Colors.grey[600]),
+            Icon(
+              icon,
+              size: 14,
+              color: isSelected ? Colors.white : Colors.grey[600],
+            ),
             const SizedBox(width: 4),
             Text(
               label,
