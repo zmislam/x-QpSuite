@@ -19,11 +19,25 @@ import 'story_creator_panel.dart';
 /// Full-screen modal bottom sheet for creating Post/Reel/Story
 /// with scheduling — mirrors the web SchedulePostModal.
 class SchedulePostModal extends StatefulWidget {
-  const SchedulePostModal({super.key});
+  /// Default mode: 'schedule' or 'now'
+  final String initialPostMode;
+
+  /// Default content type: 'Post' | 'Reel' | 'Story'
+  final String initialContentType;
+
+  const SchedulePostModal({
+    super.key,
+    this.initialPostMode = 'schedule',
+    this.initialContentType = 'Post',
+  });
 
   /// Show the modal as a full-screen bottom sheet.
   /// Returns `true` if content was successfully posted/scheduled.
-  static Future<bool?> show(BuildContext context) {
+  static Future<bool?> show(
+    BuildContext context, {
+    String initialPostMode = 'schedule',
+    String initialContentType = 'Post',
+  }) {
     return showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
@@ -32,7 +46,10 @@ class SchedulePostModal extends StatefulWidget {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
       ),
-      builder: (_) => const SchedulePostModal(),
+      builder: (_) => SchedulePostModal(
+        initialPostMode: initialPostMode,
+        initialContentType: initialContentType,
+      ),
     );
   }
 
@@ -45,8 +62,8 @@ class _SchedulePostModalState extends State<SchedulePostModal> {
   final _picker = ImagePicker();
 
   // Core state
-  String _contentType = 'Post'; // Post | Reel | Story
-  String _postMode = 'schedule'; // schedule | now
+  late String _contentType; // Post | Reel | Story
+  late String _postMode; // schedule | now
 
   // Schedule picker state
   DateTime? _scheduleDate;
@@ -63,6 +80,13 @@ class _SchedulePostModalState extends State<SchedulePostModal> {
   // Submission
   bool _isSubmitting = false;
   String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _postMode = widget.initialPostMode;
+    _contentType = widget.initialContentType;
+  }
 
   @override
   void dispose() {

@@ -326,6 +326,7 @@ class ApiConstants {
   static const String savePost = '/save-post';
   static const String hidePost = '/hide-unhide-post';
   static const String bookmarkPost = '/save-post-bookmark';
+  static const String allFollowers = '/get-all-followers';
   static String removeBookmark(String bookmarkId) =>
       '/remove-post-bookmark/$bookmarkId';
 }
