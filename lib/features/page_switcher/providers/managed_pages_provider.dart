@@ -11,6 +11,7 @@ class ManagedPagesProvider extends ChangeNotifier {
   List<ManagedPageModel> _pages = [];
   ManagedPageModel? _activePage;
   bool _isLoading = false;
+  bool _isSwitchingPage = false;
   String? _error;
 
   ManagedPagesProvider({required ApiService api}) : _api = api;
@@ -19,6 +20,7 @@ class ManagedPagesProvider extends ChangeNotifier {
   ManagedPageModel? get activePage => _activePage;
   String? get activePageId => _activePage?.id;
   bool get isLoading => _isLoading;
+  bool get isSwitchingPage => _isSwitchingPage;
   String? get error => _error;
   bool get hasPages => _pages.isNotEmpty;
 
@@ -56,8 +58,23 @@ class ManagedPagesProvider extends ChangeNotifier {
 
   /// Switch to a different page.
   Future<void> setActivePage(ManagedPageModel page) async {
+    if (_activePage?.id == page.id) return;
+
+    _isSwitchingPage = true;
     _activePage = page;
-    await StorageService.setString(StorageKeys.lastSelectedPageId, page.id);
+    notifyListeners();
+
+    // Persisting the selected page should not block UI updates.
+    try {
+      await StorageService.setString(StorageKeys.lastSelectedPageId, page.id);
+    } catch (_) {
+      // Keep the in-memory active page even if persistence fails.
+    }
+  }
+
+  /// Called by BottomNavShell after all providers have started reloading.
+  void clearSwitching() {
+    _isSwitchingPage = false;
     notifyListeners();
   }
 }

@@ -8,17 +8,21 @@ import '../../../core/utils/formatters.dart';
 import '../../../features/auth/providers/auth_provider.dart';
 import '../../../features/page_switcher/providers/managed_pages_provider.dart';
 import '../../../features/posts/providers/post_provider.dart';
-import '../../../features/posts/screens/create_page_post_screen.dart';
 import '../../../features/posts/widgets/comment_modal.dart';
 import '../../../features/posts/widgets/post_card.dart';
 import '../../../features/posts/widgets/reactions_bottom_sheet.dart';
+import '../../../features/content/widgets/schedule_post_modal.dart';
 import '../../../core/services/api_service.dart';
 import '../../../shared/widgets/empty_state.dart';
 import '../../../shared/widgets/error_state.dart';
 import '../../../shared/widgets/qp_loading.dart';
 import '../models/dashboard_models.dart';
 import '../providers/dashboard_provider.dart';
+import '../widgets/demographics_section.dart';
 import '../widgets/kpi_grid.dart';
+import '../widgets/period_filter.dart';
+import '../widgets/recent_activity_section.dart';
+import '../widgets/top_posts_section.dart';
 import '../widgets/trend_chart_section.dart';
 
 class DashboardScreen extends StatefulWidget {
@@ -224,7 +228,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
 
     final activePage = pages.activePage!;
-    final pageInfo = data.pageInfo;
+    final hasCurrentPageData =
+      currentPageId != null && dash.dataPageId == currentPageId;
+    final pageInfo = hasCurrentPageData ? data.pageInfo : null;
+    final followersCount = hasCurrentPageData
+      ? data.kpis.followers.value
+      : activePage.followersCount;
 
     return RefreshIndicator(
       onRefresh: () async => _loadDashboard(),
@@ -281,7 +290,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 _CoverProfileHero(
                   pageInfo: pageInfo,
                   activePage: activePage,
-                  followersCount: data.kpis.followers.value,
+                  followersCount: followersCount,
                 ),
 
                 const SizedBox(height: 16),
@@ -294,14 +303,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     height: 48,
                     child: ElevatedButton.icon(
                       onPressed: () {
-                        final page = context.read<ManagedPagesProvider>().activePage;
-                        if (page != null) {
-                          Navigator.of(context).push(
-                            MaterialPageRoute(
-                              builder: (_) => CreatePagePostScreen(page: page),
-                            ),
-                          );
-                        }
+                        SchedulePostModal.show(context, initialPostMode: 'now');
                       },
                       icon: const Icon(Icons.edit_outlined, size: 20),
                       label: const Text(
@@ -386,35 +388,175 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
                 // ── Dashboard Overview (default view) ──
                 if (!_showPostsFeed) ...[  
-                  KpiGrid(kpis: data.kpis),
+                  if (dash.isLoading)
+                    const Padding(
+                      padding: EdgeInsets.fromLTRB(16, 0, 16, 8),
+                      child: Row(
+                        children: [
+                          SizedBox(
+                            width: 14,
+                            height: 14,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: AppColors.primary,
+                            ),
+                          ),
+                          SizedBox(width: 8),
+                          Text(
+                            'Updating overview and trends...',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: AppColors.textSecondaryLight,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
 
-                  const SizedBox(height: 24),
+                  if (dash.error != null && !dash.isLoading)
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                      child: Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFFF4E5),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: const Color(0xFFFFD3A1)),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.info_outline,
+                                size: 16, color: Color(0xFFB45309)),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                dash.error!,
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  color: Color(0xFF92400E),
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
 
-                  // ── Performance Trend Chart ──
-                  TrendChartSection(
-                    trendData: data.trend,
-                    selectedMetric: context.watch<DashboardProvider>().selectedMetric,
-                    period: context.watch<DashboardProvider>().period,
-                    onMetricChanged: (metric) {
-                      context.read<DashboardProvider>().setSelectedMetric(metric);
-                    },
+                  // ── Period Filter Pills ──
+                  PeriodFilter(
+                    selectedPeriod: context.watch<DashboardProvider>().period,
+                    isLoading: dash.isLoading,
                     onPeriodChanged: (days) {
                       context.read<DashboardProvider>().setPeriod(days, currentPageId!);
                     },
                   ),
 
-                  // ── Divider ──
-                  const Divider(
-                      height: 32,
-                      thickness: 8,
-                      color: AppColors.surfaceLight),
+                  const SizedBox(height: 16),
 
-                  // ── To-do List ──
-                  _TodoListSection(
-                    todos: data.todos,
-                    recentActivity: data.recentActivity,
-                    kpis: data.kpis,
-                  ),
+                  if (!hasCurrentPageData)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: AppColors.dividerLight),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              dash.isLoading
+                                  ? 'Loading dashboard for ${activePage.pageName}...'
+                                  : (dash.error ??
+                                      'No dashboard data available for ${activePage.pageName}.'),
+                              style: const TextStyle(
+                                fontSize: 13,
+                                color: AppColors.textSecondaryLight,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                            const SizedBox(height: 10),
+                            TextButton.icon(
+                              onPressed: _loadDashboard,
+                              icon: const Icon(Icons.refresh, size: 16),
+                              label: const Text('Retry'),
+                              style: TextButton.styleFrom(
+                                foregroundColor: AppColors.primary,
+                                padding: EdgeInsets.zero,
+                                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                minimumSize: const Size(0, 0),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    )
+                  else ...[
+                    KpiGrid(kpis: data.kpis, trendData: data.trend),
+
+                    const SizedBox(height: 24),
+
+                    // ── Performance Trend Chart + Follower Growth ──
+                    TrendChartSection(
+                      trendData: data.trend,
+                      selectedMetric: context.watch<DashboardProvider>().selectedMetric,
+                      onMetricChanged: (metric) {
+                        context.read<DashboardProvider>().setSelectedMetric(metric);
+                      },
+                    ),
+
+                    const SizedBox(height: 16),
+
+                    // ── Demographics (Gender, Age, Countries, Cities) ──
+                    if (!data.demographics.isEmpty) ...[
+                      const Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 16),
+                        child: Text(
+                          'Audience',
+                          style: TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.black,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      DemographicsSection(demographics: data.demographics),
+                      const SizedBox(height: 16),
+                    ],
+
+                    // ── Top Performing Posts ──
+                    if (data.topPosts.isNotEmpty) ...[
+                      TopPostsSection(posts: data.topPosts),
+                      const SizedBox(height: 16),
+                    ],
+
+                    // ── Recent Activity ──
+                    if (data.recentActivity.isNotEmpty) ...[
+                      RecentActivitySection(activities: data.recentActivity),
+                      const SizedBox(height: 16),
+                    ],
+
+                    // ── Divider ──
+                    const Divider(
+                        height: 32,
+                        thickness: 8,
+                        color: AppColors.surfaceLight),
+
+                    // ── To-do List ──
+                    _TodoListSection(
+                      todos: data.todos,
+                      recentActivity: data.recentActivity,
+                      kpis: data.kpis,
+                    ),
+                  ],
                 ],
 
                 // ── Posts Feed (when toggled) ──
@@ -429,7 +571,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 const SizedBox(height: 8),
 
                 // ── Onboarding ──
-                if (!data.onboarding.isComplete) ...[
+                if (hasCurrentPageData && !data.onboarding.isComplete) ...[
                   _OnboardingCard(onboarding: data.onboarding),
                   const SizedBox(height: 16),
                 ],
@@ -467,7 +609,9 @@ class _PageAvatar extends StatelessWidget {
       backgroundImage:
           profilePicUrl.isNotEmpty ? NetworkImage(profilePicUrl) : null,
       onBackgroundImageError:
-          profilePicUrl.isNotEmpty ? (_, __) {} : null,
+          profilePicUrl.isNotEmpty
+            ? (exception, stackTrace) {}
+            : null,
       child: profilePicUrl.isEmpty
           ? Text(
               pageName.isNotEmpty ? pageName[0].toUpperCase() : '?',
@@ -499,6 +643,9 @@ class _CoverProfileHero extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final pageId = (pageInfo?.id.isNotEmpty ?? false)
+      ? pageInfo!.id
+      : activePage.id.toString();
     final coverUrl = pageInfo?.coverPic != null
         ? ApiConstants.pageCoverUrl(pageInfo!.coverPic)
         : '';
@@ -516,54 +663,78 @@ class _CoverProfileHero extends StatelessWidget {
           clipBehavior: Clip.none,
           children: [
             // Cover image
-            Container(
-              width: double.infinity,
-              height: 160,
-              decoration: BoxDecoration(
-                color: AppColors.surfaceLight,
-                image: coverUrl.isNotEmpty
-                    ? DecorationImage(
-                        image: NetworkImage(coverUrl),
-                        fit: BoxFit.cover,
-                        onError: (_, __) {},
+            GestureDetector(
+              onTap: coverUrl.isNotEmpty
+                  ? () => _ImagePreviewViewer.show(
+                        context,
+                        imageUrl: coverUrl,
+                        heroTag: 'cover-$pageId',
                       )
-                    : null,
-                gradient: coverUrl.isEmpty
-                    ? const LinearGradient(
-                        colors: [AppColors.primary, Color(0xFF5AB9E6)],
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                      )
-                    : null,
-              ),
-              child: coverUrl.isEmpty
-                  ? const Center(
-                      child: Icon(Icons.business_center,
-                          color: Colors.white38, size: 48),
-                    )
                   : null,
+              child: Hero(
+                tag: 'cover-$pageId',
+                child: Container(
+                  width: double.infinity,
+                  height: 160,
+                  decoration: BoxDecoration(
+                    color: AppColors.surfaceLight,
+                    image: coverUrl.isNotEmpty
+                        ? DecorationImage(
+                            image: NetworkImage(coverUrl),
+                            fit: BoxFit.cover,
+                            onError: (exception, stackTrace) {},
+                          )
+                        : null,
+                    gradient: coverUrl.isEmpty
+                        ? const LinearGradient(
+                            colors: [AppColors.primary, Color(0xFF5AB9E6)],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                          )
+                        : null,
+                  ),
+                  child: coverUrl.isEmpty
+                      ? const Center(
+                          child: Icon(Icons.business_center,
+                              color: Colors.white38, size: 48),
+                        )
+                      : null,
+                ),
+              ),
             ),
 
             // Profile pic overlapping bottom-left
             Positioned(
               left: 16,
               bottom: -32,
-              child: Container(
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  border: Border.all(color: Colors.white, width: 3.5),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.12),
-                      blurRadius: 8,
-                      offset: const Offset(0, 2),
+              child: GestureDetector(
+                onTap: profileUrl.isNotEmpty
+                    ? () => _ImagePreviewViewer.show(
+                          context,
+                          imageUrl: profileUrl,
+                          heroTag: 'avatar-$pageId',
+                        )
+                    : null,
+                child: Container(
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    border: Border.all(color: Colors.white, width: 3.5),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.12),
+                        blurRadius: 8,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: Hero(
+                    tag: 'avatar-$pageId',
+                    child: _PageAvatar(
+                      profilePicUrl: profileUrl,
+                      pageName: pageName,
+                      size: 72,
                     ),
-                  ],
-                ),
-                child: _PageAvatar(
-                  profilePicUrl: profileUrl,
-                  pageName: pageName,
-                  size: 72,
+                  ),
                 ),
               ),
             ),
@@ -629,7 +800,11 @@ class _CoverProfileHero extends StatelessWidget {
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16),
           child: InkWell(
-            onTap: () {},
+            onTap: () => _FollowersListSheet.show(
+              context,
+              pageId: pageId,
+              pageName: pageName,
+            ),
             borderRadius: BorderRadius.circular(4),
             child: Row(
               mainAxisSize: MainAxisSize.min,
@@ -680,25 +855,34 @@ class _QuickActionsRow extends StatelessWidget {
             icon: Icons.videocam_rounded,
             label: 'Reel',
             color: const Color(0xFFFF3040),
-            onTap: () {},
+            onTap: () => SchedulePostModal.show(context, initialPostMode: 'now', initialContentType: 'Reel'),
           ),
           _QuickActionItem(
             icon: Icons.add_circle_outline_rounded,
             label: 'Story',
             color: const Color(0xFFF7B928),
-            onTap: () {},
+            onTap: () => SchedulePostModal.show(context, initialPostMode: 'now', initialContentType: 'Story'),
           ),
           _QuickActionItem(
             icon: Icons.campaign_rounded,
             label: 'Advertise',
             color: AppColors.success,
-            onTap: () {},
+            onTap: () {
+              final messenger = ScaffoldMessenger.of(context);
+              messenger.hideCurrentSnackBar();
+              messenger.showSnackBar(
+                const SnackBar(
+                  content: Text('Advertise is coming soon.'),
+                  duration: Duration(seconds: 2),
+                ),
+              );
+            },
           ),
           _QuickActionItem(
             icon: Icons.add_photo_alternate_outlined,
             label: 'Photo',
             color: AppColors.primary,
-            onTap: () {},
+            onTap: () => SchedulePostModal.show(context, initialPostMode: 'now', initialContentType: 'Post'),
           ),
         ],
       ),
@@ -746,6 +930,365 @@ class _QuickActionItem extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _ImagePreviewViewer extends StatelessWidget {
+  final String imageUrl;
+  final String heroTag;
+
+  const _ImagePreviewViewer({
+    required this.imageUrl,
+    required this.heroTag,
+  });
+
+  static Future<void> show(
+    BuildContext context, {
+    required String imageUrl,
+    required String heroTag,
+  }) {
+    if (imageUrl.isEmpty) {
+      return Future.value();
+    }
+
+    return Navigator.of(context).push(
+      PageRouteBuilder(
+        opaque: false,
+        barrierColor: Colors.black87,
+        transitionDuration: const Duration(milliseconds: 200),
+        reverseTransitionDuration: const Duration(milliseconds: 180),
+        pageBuilder: (context, animation, secondaryAnimation) =>
+            _ImagePreviewViewer(
+          imageUrl: imageUrl,
+          heroTag: heroTag,
+        ),
+        transitionsBuilder:
+            (context, animation, secondaryAnimation, child) {
+          return FadeTransition(opacity: animation, child: child);
+        },
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: Stack(
+        children: [
+          Center(
+            child: InteractiveViewer(
+              minScale: 0.8,
+              maxScale: 4.0,
+              child: Hero(
+                tag: heroTag,
+                child: Image.network(
+                  imageUrl,
+                  fit: BoxFit.contain,
+                  loadingBuilder: (context, child, loadingProgress) {
+                    if (loadingProgress == null) return child;
+                    return const Center(
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white38,
+                      ),
+                    );
+                  },
+                  errorBuilder: (context, error, stackTrace) => const Center(
+                    child: Icon(
+                      Icons.broken_image,
+                      color: Colors.white38,
+                      size: 64,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            child: SafeArea(
+              child: Align(
+                alignment: Alignment.topLeft,
+                child: IconButton(
+                  icon: const Icon(Icons.close, color: Colors.white, size: 28),
+                  onPressed: () => Navigator.pop(context),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _FollowersListSheet extends StatefulWidget {
+  final String pageId;
+  final String pageName;
+
+  const _FollowersListSheet({
+    required this.pageId,
+    required this.pageName,
+  });
+
+  static Future<void> show(
+    BuildContext context, {
+    required String pageId,
+    required String pageName,
+  }) {
+    return showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _FollowersListSheet(pageId: pageId, pageName: pageName),
+    );
+  }
+
+  @override
+  State<_FollowersListSheet> createState() => _FollowersListSheetState();
+}
+
+class _FollowersListSheetState extends State<_FollowersListSheet> {
+  bool _isLoading = true;
+  String? _error;
+  List<_FollowerListItem> _followers = const [];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadFollowers();
+  }
+
+  Future<void> _loadFollowers() async {
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
+
+    try {
+      final api = context.read<ApiService>();
+      final res = await api.post(
+        ApiConstants.allFollowers,
+        data: {'page_id': widget.pageId},
+      );
+      final payload = res.data;
+
+      if (payload is Map<String, dynamic> && payload['status'] == 200) {
+        final rawList = payload['data'];
+        if (rawList is List) {
+          _followers = rawList
+              .whereType<Map<String, dynamic>>()
+              .map(_FollowerListItem.fromJson)
+              .where((item) => item.name.isNotEmpty)
+              .toList();
+        } else {
+          _followers = const [];
+        }
+      } else {
+        _error = (payload is Map<String, dynamic>)
+            ? (payload['message']?.toString() ?? 'Failed to load followers.')
+            : 'Failed to load followers.';
+      }
+    } catch (_) {
+      _error = 'Could not load followers. Please try again.';
+    }
+
+    if (!mounted) return;
+    setState(() {
+      _isLoading = false;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final maxHeight = MediaQuery.of(context).size.height * 0.76;
+
+    return SafeArea(
+      top: false,
+      child: Container(
+        height: maxHeight,
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        child: Column(
+          children: [
+            const SizedBox(height: 10),
+            Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Colors.grey[350],
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      '${widget.pageName} followers',
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.black,
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    onPressed: () => Navigator.pop(context),
+                    icon: const Icon(Icons.close),
+                  ),
+                ],
+              ),
+            ),
+            const Divider(height: 1),
+            Expanded(child: _buildContent()),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildContent() {
+    if (_isLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    if (_error != null) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.error_outline, color: Colors.redAccent, size: 28),
+              const SizedBox(height: 8),
+              Text(
+                _error!,
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: AppColors.textSecondaryLight),
+              ),
+              const SizedBox(height: 12),
+              TextButton(
+                onPressed: _loadFollowers,
+                child: const Text('Retry'),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    if (_followers.isEmpty) {
+      return const Center(
+        child: Text(
+          'No followers found.',
+          style: TextStyle(color: AppColors.textSecondaryLight),
+        ),
+      );
+    }
+
+    return ListView.separated(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      itemCount: _followers.length,
+      separatorBuilder: (context, index) => const Divider(height: 16),
+      itemBuilder: (context, index) {
+        final follower = _followers[index];
+        final avatarUrl = follower.profilePic.isNotEmpty
+            ? ApiConstants.userProfileUrl(follower.profilePic)
+            : '';
+
+        return Row(
+          children: [
+            CircleAvatar(
+              radius: 22,
+              backgroundColor: AppColors.surfaceLight,
+              backgroundImage: avatarUrl.isNotEmpty
+                  ? NetworkImage(avatarUrl)
+                  : null,
+              child: avatarUrl.isEmpty
+                  ? Text(
+                      follower.name[0].toUpperCase(),
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.primary,
+                      ),
+                    )
+                  : null,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    follower.name,
+                    style: const TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.black,
+                    ),
+                  ),
+                  if (follower.followedAt != null)
+                    Text(
+                      'Followed on ${Formatters.formatDate(follower.followedAt!)}',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: AppColors.textSecondaryLight,
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _FollowerListItem {
+  final String name;
+  final String profilePic;
+  final DateTime? followedAt;
+
+  const _FollowerListItem({
+    required this.name,
+    required this.profilePic,
+    required this.followedAt,
+  });
+
+  factory _FollowerListItem.fromJson(Map<String, dynamic> json) {
+    final user = json['user_id'];
+    if (user is! Map<String, dynamic>) {
+      return const _FollowerListItem(
+        name: '',
+        profilePic: '',
+        followedAt: null,
+      );
+    }
+
+    final firstName = user['first_name']?.toString().trim() ?? '';
+    final lastName = user['last_name']?.toString().trim() ?? '';
+    final fallbackName = user['username']?.toString().trim() ?? '';
+    final fullName = [firstName, lastName].where((part) => part.isNotEmpty).join(' ');
+
+    final createdAtRaw = json['createdAt']?.toString();
+    final createdAt = createdAtRaw != null
+        ? DateTime.tryParse(createdAtRaw)
+        : null;
+
+    return _FollowerListItem(
+      name: fullName.isNotEmpty ? fullName : fallbackName,
+      profilePic: user['profile_pic']?.toString() ?? '',
+      followedAt: createdAt,
     );
   }
 }

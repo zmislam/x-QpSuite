@@ -257,10 +257,109 @@ class OnboardingProgress {
   }
 }
 
+/// Demographics data returned from the dashboard endpoint.
+class DemographicsData {
+  final GenderBreakdown gender;
+  final List<AgeGroup> ageGroups;
+  final List<LocationEntry> topCountries;
+  final List<LocationEntry> topCities;
+
+  const DemographicsData({
+    required this.gender,
+    required this.ageGroups,
+    required this.topCountries,
+    required this.topCities,
+  });
+
+  factory DemographicsData.fromJson(Map<String, dynamic> json) {
+    final genderJson = json['gender'] as Map<String, dynamic>? ?? {};
+    return DemographicsData(
+      gender: GenderBreakdown.fromJson(genderJson),
+      ageGroups: (json['age_groups'] as List?)
+              ?.map((e) => AgeGroup.fromJson(e))
+              .toList() ??
+          [],
+      topCountries: (json['top_countries'] as List?)
+              ?.map((e) => LocationEntry.fromJson(e))
+              .toList() ??
+          [],
+      topCities: (json['top_cities'] as List?)
+              ?.map((e) => LocationEntry.fromJson(e))
+              .toList() ??
+          [],
+    );
+  }
+
+  static DemographicsData empty() => DemographicsData(
+        gender: GenderBreakdown(male: 0, female: 0, other: 0),
+        ageGroups: const [],
+        topCountries: const [],
+        topCities: const [],
+      );
+
+  bool get isEmpty =>
+      gender.total == 0 &&
+      ageGroups.isEmpty &&
+      topCountries.isEmpty &&
+      topCities.isEmpty;
+}
+
+class GenderBreakdown {
+  final int male;
+  final int female;
+  final int other;
+
+  const GenderBreakdown({
+    required this.male,
+    required this.female,
+    required this.other,
+  });
+
+  int get total => male + female + other;
+
+  factory GenderBreakdown.fromJson(Map<String, dynamic> json) {
+    return GenderBreakdown(
+      male: (json['male'] ?? 0) as int,
+      female: (json['female'] ?? 0) as int,
+      other: (json['other'] ?? 0) as int,
+    );
+  }
+}
+
+class AgeGroup {
+  final String range;
+  final int count;
+
+  const AgeGroup({required this.range, required this.count});
+
+  factory AgeGroup.fromJson(Map<String, dynamic> json) {
+    return AgeGroup(
+      range: json['range'] ?? '',
+      count: json['count'] ?? 0,
+    );
+  }
+}
+
+class LocationEntry {
+  final String name;
+  final int count;
+
+  const LocationEntry({required this.name, required this.count});
+
+  factory LocationEntry.fromJson(Map<String, dynamic> json) {
+    // API returns either 'country' or 'city' key
+    return LocationEntry(
+      name: json['country'] ?? json['city'] ?? json['name'] ?? '',
+      count: json['count'] ?? 0,
+    );
+  }
+}
+
 class DashboardData {
   final DashboardPageInfo? pageInfo;
   final DashboardKpis kpis;
   final List<TrendPoint> trend;
+  final DemographicsData demographics;
   final List<TopPost> topPosts;
   final List<RecentActivity> recentActivity;
   final List<TodoItem> todos;
@@ -270,6 +369,7 @@ class DashboardData {
     this.pageInfo,
     required this.kpis,
     required this.trend,
+    required this.demographics,
     required this.topPosts,
     required this.recentActivity,
     required this.todos,
@@ -286,6 +386,9 @@ class DashboardData {
               ?.map((e) => TrendPoint.fromJson(e))
               .toList() ??
           [],
+      demographics: json['demographics'] != null
+          ? DemographicsData.fromJson(json['demographics'])
+          : DemographicsData.empty(),
       topPosts: (json['top_posts'] as List?)
               ?.map((e) => TopPost.fromJson(e))
               .toList() ??
