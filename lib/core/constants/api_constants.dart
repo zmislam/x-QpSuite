@@ -261,6 +261,7 @@ class ApiConstants {
   static String analytics(String campaignId) =>
       '/campaigns-v2/analytics/$campaignId';
   static String adAnalytics(String adId) => '/campaigns-v2/analytics/ad/$adId';
+  static String adDemographics(String adId) => '/campaigns-v2/analytics/ad/$adId/demographics';
   static String campaignDemographics(String campaignId) =>
       '/campaigns-v2/analytics/$campaignId/demographics';
   static const String beacon = '/campaigns-v2/beacon';

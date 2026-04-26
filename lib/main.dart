@@ -15,6 +15,7 @@ import 'features/notifications/providers/notifications_provider.dart';
 import 'features/page_switcher/providers/managed_pages_provider.dart';
 import 'features/posts/providers/post_provider.dart';
 import 'features/todos/providers/todos_provider.dart';
+import 'features/ads_manager/providers/ads_manager_provider.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -66,6 +67,9 @@ void main() async {
         ),
         ChangeNotifierProvider(
           create: (_) => PostProvider(api: apiService),
+        ),
+        ChangeNotifierProvider(
+          create: (_) => AdsManagerProvider(api: apiService),
         ),
       ],
       child: const QpSuiteApp(),
