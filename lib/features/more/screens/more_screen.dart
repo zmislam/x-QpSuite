@@ -52,6 +52,8 @@ class MoreScreen extends StatelessWidget {
               badge: notif.unreadCount > 0 ? '${notif.unreadCount}' : null),
           _tile(context, Icons.check_circle_outline, 'To-Do Tasks',
               '/more/todos'),
+          _tile(context, Icons.ads_click, 'Ads Manager',
+              '/ads-manager'),
           _tile(context, Icons.campaign_outlined, 'Boosted Posts',
               '/more/boosted-posts'),
           const Divider(),

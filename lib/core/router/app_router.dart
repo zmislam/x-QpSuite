@@ -19,6 +19,8 @@ import '../../features/settings/screens/settings_screen.dart';
 import '../../features/content/screens/schedule_content_screen.dart';
 import '../../features/content/screens/content_calendar_screen.dart';
 import '../../features/content/screens/scheduled_posts_screen.dart';
+import '../../features/ads_manager/screens/ads_manager_shell.dart';
+import '../../features/ads_manager/screens/ad_detail_screen.dart';
 import '../../shared/bottom_nav_shell.dart';
 
 final _rootKey = GlobalKey<NavigatorState>();
@@ -57,6 +59,21 @@ GoRouter createRouter(AuthProvider authProvider) {
       GoRoute(
         path: '/login',
         builder: (context, state) => const LoginScreen(),
+      ),
+
+      // ── Ads Manager (full-screen, own nav) ──────────
+      GoRoute(
+        path: '/ads-manager',
+        builder: (context, state) => const AdsManagerShell(),
+        routes: [
+          GoRoute(
+            path: 'ad/:id',
+            builder: (context, state) {
+              final adId = state.pathParameters['id']!;
+              return AdDetailScreen(adId: adId);
+            },
+          ),
+        ],
       ),
 
       // ── Main Shell (Bottom Nav) ─────────────────
